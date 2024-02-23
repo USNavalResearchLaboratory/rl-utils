@@ -1,0 +1,8 @@
+numpy
+gymnasium
+torch
+stable_baselines3
+optuna
+pandas
+PyYAML
+moviepy

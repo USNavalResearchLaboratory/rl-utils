@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+authors = [{ name = "Paul Rademacher", email = "paul.rademacher@nrl.navy.mil" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy",
+  "gymnasium",
+  "torch",
+  "stable_baselines3",
+  "optuna",
+  "pandas",
+  "PyYAML",
+  "moviepy",
+]
+description = "A collection of utilities for reinforcement learning"
+name = "RL-utils"
+readme = "README.md"
+requires-python = ">=3.11"
+version = "0.0.1"
+
+[project.optional-dependencies]
+dev = [
+  "ipython",
+  "black",
+  "ruff",
+  "mypy",
+  "pre-commit",
+  "hatch",
+  "pytest",
+  "pytest-cov",
+  "pytest-xdist",
+]
+typing = [
+  "types-PyYAML",
+  "types-PyMySQL",
+  "types-tqdm",
+  "types-tabulate",
+  "types-pytz",
+  "types-psycopg2",
+  "types-psutil",
+  "types-protobuf",
+  "types-Pillow",
+  "types-colorama",
+  "pandas-stubs",
+  "types-pyOpenSSL",
+  "types-redis",
+]
+docs = ["Sphinx", "furo"]
+extras = ["ipykernel", "tensorboard", "torch-tb-profiler", "PyQt6"]
+
+[tool.hatch.build]
+ignore-vcs = true
+packages = ["src/rl_utils"]
+
+[tool.hatch.envs.default]
+python = "3.11"
+
+[tool.hatch.envs.dev]
+features = ["dev"]
+post-install-commands = [
+  "pre-commit install",
+  "mypy --install-types --non-interactive . || true",
+]
+
+[tool.ruff]
+src = ["src"]
+select = [
+  "F",   # pyflakes
+  "E",   # pycodestyle
+  "W",   # pycodestyle
+  "C90", # mccabe
+  "I",   # isort
+  "N",   # pep8-naming
+  "D",   # pydocstyle
+  "B",   # bugbear
+  "UP",  # pyupgrade
+]
+ignore = [
+  "D1",   # missing docstrings
+  "B905", # zip w/o explicit `strict=`
+]
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+plugins = "numpy.typing.mypy_plugin"
+
+[[tool.mypy.overrides]]
+module = ["rl_utils.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/"]
+addopts = [
+  "--import-mode=importlib",
+  "--cov=src/rl_utils",
+  "--cov-report=term",
+  "--cov-report=xml:tests/coverage.xml",
+  "--numprocesses=auto",
+]
+
+[tool.coverage.run]
+data_file = "tests/.coverage"
