@@ -6,6 +6,7 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from functools import partial
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ import pandas as pd
 import stable_baselines3
 import yaml
 from gymnasium.envs.registration import EnvSpec
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -30,6 +31,9 @@ from torch import nn
 MaybeWrapper = str | gym.Wrapper
 WrapFactorySeq = Sequence[str | Callable[[gym.Env], gym.Wrapper]]
 PathOrStr = str | os.PathLike
+
+# TODO: add CLI args for common stopping callback parameters?
+# TODO: rework CLI parsing w/ defaults and `Namespace`?
 
 
 def get_now():
@@ -108,9 +112,9 @@ def _make_vec_env(
 def record_vid_vec(
     model: BaseAlgorithm,
     env: GymEnv,
+    video_length: int,
     deterministic: bool = True,
     video_folder: PathOrStr = ".",
-    video_length: int = 0,
     video_type: str = "mp4",
     seed: int | None = None,
 ) -> list[np.ndarray]:
@@ -131,7 +135,6 @@ def record_vid_vec(
     """
     if not isinstance(env, VecEnv):
         env = DummyVecEnv([lambda: env])  # type: ignore[list-item, return-value]
-    env.render_mode = "rgb_array"
     env.seed(seed)
 
     frames: list = []
@@ -143,14 +146,13 @@ def record_vid_vec(
         frames.append(env.render())
     env.close()
 
-    if video_length > 0:
-        clip = ImageSequenceClip(frames, fps=env.metadata["render_fps"])
-        if video_type == "mp4":
-            clip.write_videofile(str(Path(video_folder) / "render.mp4"))
-        elif video_type == "gif":
-            clip.write_gif(str(Path(video_folder) / "render.gif"))
-        else:
-            raise ValueError(f"Video type '{video_type}' not supported.")
+    clip = ImageSequenceClip(frames, fps=env.metadata["render_fps"])
+    if video_type == "mp4":
+        clip.write_videofile(str(Path(video_folder) / "render.mp4"))
+    elif video_type == "gif":
+        clip.write_gif(str(Path(video_folder) / "render.gif"))
+    else:
+        raise ValueError(f"Video type '{video_type}' not supported.")
 
     # model.logger.record(
     #     "render/eps",
@@ -164,9 +166,9 @@ def record_vid_vec(
 def record_vid(
     model: BaseAlgorithm,
     env: gym.Env,
+    video_length: int,
     deterministic: bool = True,
     video_folder: PathOrStr = ".",
-    video_length: int = 0,
     video_type: str = "mp4",
     seed: int | None = None,
 ) -> list[np.ndarray]:
@@ -185,8 +187,6 @@ def record_vid(
         List of rendered RGB arrays.
 
     """
-    env.unwrapped.render_mode = "rgb_array"
-
     env.np_random = np.random.default_rng(seed)
 
     frames: list = []
@@ -202,14 +202,13 @@ def record_vid(
             frames.append(env.render())
     env.close()
 
-    if video_length > 0:
-        clip = ImageSequenceClip(frames, fps=env.metadata["render_fps"])
-        if video_type == "mp4":
-            clip.write_videofile(str(Path(video_folder) / "render.mp4"))
-        elif video_type == "gif":
-            clip.write_gif(str(Path(video_folder) / "render.gif"))
-        else:
-            raise ValueError(f"Video type '{video_type}' not supported.")
+    clip = ImageSequenceClip(frames, fps=env.metadata["render_fps"])
+    if video_type == "mp4":
+        clip.write_videofile(str(Path(video_folder) / "render.mp4"))
+    elif video_type == "gif":
+        clip.write_gif(str(Path(video_folder) / "render.gif"))
+    else:
+        raise ValueError(f"Video type '{video_type}' not supported.")
 
     # model.logger.record(
     #     "render/eps",
@@ -223,8 +222,8 @@ def record_vid(
 class LogTruncationCallback(BaseCallback):
     """Callback for logging episode truncations.
 
-    Buffers truncation values in the same fashion as `ep_info_buffer`. Converts to
-    `int` and averages buffered values, providing an estimate of the probability of
+    Buffers truncation values in the same fashion as `ep_info_buffer`. Converts to `int`
+    and averages buffered values, providing an estimate of the probability of
     truncation.
 
     """
@@ -400,9 +399,11 @@ def _make_model(
     if params_path is not None:
         model.set_parameters(str(params_path))
 
-    _format_strings = ["tensorboard"]
+    _format_strings = []
     if verbose >= 1:
-        _format_strings.insert(0, "stdout")
+        _format_strings.append("stdout")
+    if find_spec("tensorboard") is not None:
+        _format_strings.append("tensorboard")
     _logger = configure(str(log_path), _format_strings)
     model.set_logger(_logger)
 
@@ -562,11 +563,16 @@ def train(
     with open(log_path / "eval.yml", "w") as f:
         yaml.dump(dict(mean_reward=mean_reward, std_reward=std_reward), f)
 
-    render_env = make_env(env_id, env_kwargs, max_episode_steps, wrappers)
-    record_vid(model, render_env, deterministic, str(log_path), video_length, seed=seed)
-    # record_vid_vec(
-    #     model, eval_env, deterministic, str(log_path), video_length, seed=seed
-    # )
+    if video_length > 0:
+        _kwargs = env_kwargs.copy() if env_kwargs is not None else {}
+        _kwargs["render_mode"] = "rgb_array"
+        render_env = make_env(env_id, _kwargs, max_episode_steps, wrappers)
+        record_vid(
+            model, render_env, video_length, deterministic, str(log_path), seed=seed
+        )
+        # record_vid_vec(
+        #     model, eval_env, video_length, deterministic, str(log_path), seed=seed
+        # )
 
     return mean_reward
 
@@ -669,28 +675,33 @@ def hyperopt(
 
         _load_best_model(model, best_model_save_path=trial_path)
 
-        episode_rewards, _ = evaluate_policy(
-            model,
-            eval_env,
-            n_eval_episodes=eval_callback.n_eval_episodes,
-            deterministic=deterministic,
-            return_episode_rewards=True,
-        )
-        mean_reward = np.mean(episode_rewards).item()
-        std_reward = np.std(episode_rewards).item()
-
-        if verbose >= 2:
-            print(f"reward = {mean_reward:.2f} +/- {std_reward}")
-        with open(trial_path / "eval.yml", "w") as f:
-            yaml.dump(dict(mean_reward=mean_reward, std_reward=std_reward), f)
-
-        render_env = make_env(env_id, env_kwargs, max_episode_steps, wrappers)
-        record_vid(
-            model, render_env, deterministic, str(trial_path), video_length, seed=seed
-        )
-        # record_vid_vec(
-        #     model, eval_env, deterministic, str(trial_path), video_length, seed=seed
+        # episode_rewards, _ = evaluate_policy(
+        #     model,
+        #     eval_env,
+        #     n_eval_episodes=eval_callback.n_eval_episodes,
+        #     deterministic=deterministic,
+        #     return_episode_rewards=True,
         # )
+        # mean_reward = np.mean(episode_rewards).item()
+        # std_reward = np.std(episode_rewards).item()
+
+        # if verbose >= 2:
+        #     print(f"reward = {mean_reward:.2f} +/- {std_reward}")
+        # with open(trial_path / "eval.yml", "w") as f:
+        #     yaml.dump(dict(mean_reward=mean_reward, std_reward=std_reward), f)
+
+        # if video_length > 0:
+        #     _kwargs = env_kwargs.copy() if env_kwargs is not None else {}
+        #     _kwargs["render_mode"] = "rgb_array"
+        #     render_env = make_env(env_id, _kwargs, max_episode_steps, wrappers)
+        #     record_vid(
+        #         model,
+        #         render_env,
+        #         video_length,
+        #         deterministic,
+        #         str(trial_path),
+        #         seed=seed,
+        #     )
 
         del model.env, eval_env
         del model
@@ -699,8 +710,8 @@ def hyperopt(
             raise optuna.exceptions.TrialPruned()
 
         # return eval_callback.last_mean_reward
-        # return eval_callback.best_mean_reward
-        return mean_reward
+        return eval_callback.best_mean_reward
+        # return mean_reward
 
     if study_kwargs is None:
         study_kwargs = {}
@@ -714,14 +725,15 @@ def hyperopt(
     df.to_csv(log_path / "study.csv")
 
     best_trial = study.best_trial
-
-    _data = dict(
-        number=best_trial.number,
-        mean_reward=best_trial.value,
-        params=best_trial.params,
-    )
     with open(log_path / "best_trial.yml", "w") as f:
-        yaml.dump(_data, f)
+        yaml.dump(
+            dict(
+                number=best_trial.number,
+                mean_reward=best_trial.value,
+                params=best_trial.params,
+            ),
+            f,
+        )
 
     with open(log_path / "study.pkl", "wb") as fb:
         pickle.dump(study, fb)
@@ -737,7 +749,7 @@ def hyperopt(
     return best_trial.params, best_trial.value
 
 
-def main():  # noqa
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train an agent.")
 
     # Core arguments
@@ -765,8 +777,9 @@ def main():  # noqa
     # Additional arguments
     parser.add_argument(
         "--deterministic",
-        action="store_true",
-        help="Whether to use deterministic or stochastic actions.",
+        type=bool,
+        default=True,
+        help="Use deterministic policy for action evaluation.",
     )
     parser.add_argument(
         "--n-envs", type=int, default=1, help="Number of vectorized environments."
@@ -781,7 +794,7 @@ def main():  # noqa
     parser.add_argument(
         "--timestamp",
         action="store_true",
-        help="Augment log path with datetime subdirectory.",
+        help="Extend log path with datetime subdirectory.",
     )
     parser.add_argument("--video-length", type=int, default=0, help="Video length.")
     parser.add_argument("--seed", type=int, help="RNG seed.")
@@ -790,7 +803,7 @@ def main():  # noqa
     args = parser.parse_args()
 
     # Load config
-    kwargs = dict(algo_kwargs={}, eval_callback_kwargs={})
+    kwargs: dict[str, Any] = dict(algo_kwargs={}, eval_callback_kwargs={})
 
     if args.env_config is not None:
         path = args.env_config
@@ -798,7 +811,7 @@ def main():  # noqa
             with open(path) as f:
                 env_cfg = yaml.safe_load(f)
         elif path.endswith(".py"):
-            _env_globals = {}
+            _env_globals: dict = {}
             exec(Path(path).read_text(), _env_globals)
             env_cfg = _env_globals["env_cfg"]
         else:
@@ -813,7 +826,7 @@ def main():  # noqa
             with open(path) as f:
                 model_cfg = yaml.safe_load(f)
         elif path.endswith(".py"):
-            _model_globals = {}
+            _model_globals: dict = {}
             exec(Path(path).read_text(), _model_globals)
             model_cfg = _model_globals["model_cfg"]
             hyperopt_cfg = _model_globals.get("hyper_cfg")
@@ -898,7 +911,3 @@ def main():  # noqa
             verbose=args.verbose,
             **kwargs,
         )
-
-
-if __name__ == "__main__":
-    main()
