@@ -22,4 +22,13 @@ The project management tool [hatch](https://hatch.pypa.io/) is recommended to si
 
 ## Quickstart
 
-TODO: CLI and config examples
+The Stable-Baselines3 training utility `rl_utils.sb3_utils.train` can be invoked from the command line, specifying arguments for a variety of environment and learning algorithm parameters. For example,
+```
+python <path>/src/rl_utils/sb3_utils.py --env=CartPole-v1 --algo=PPO --policy=MlpPolicy --timesteps=30000
+```
+Alternatively, with the package installed the utilities can be invoked from any directory using `python -m rl_utils.sb3_utils [<args>]`. Execute either command with the `--help` option for a complete list of supported CLI options.
+
+To support easier maintenance and reproduction of environment/model setups, configuration files can be used instead of CLI options. This fully exposes the interface of `rl_utils.sb3_utils.train` and enables more detailed setup than the CLI allows. Configurations can be formatted in YAML or in Python; the latter allows the user to define/import custom objects (e.g. environment wrappers, custom policies, etc.) Example configurations are provided in `examples/` and can be invoked with syntax such as
+```
+python -m rl_utils.sb3_utils --env-config=env_cfg.yml --model-config=model_cfg.yml
+```

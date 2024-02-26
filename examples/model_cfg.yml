@@ -1,0 +1,19 @@
+algo: PPO
+policy: MlpPolicy
+algo_kwargs:
+  policy_kwargs:
+      net_arch:
+        pi: [64, 64]
+        vf: [64, 64]
+      normalize_images: False
+  learning_rate: !!float 3e-4
+  n_steps_total: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+params_path:
+total_timesteps: 50000
+callbacks: []
+eval_callback_kwargs:
+  n_eval_episodes: 10
+  eval_freq_total: 10000

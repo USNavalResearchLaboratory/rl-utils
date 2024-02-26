@@ -11,6 +11,46 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true
-        }
+        },
+        {
+            "name": "ex_train_cli",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/rl_utils/sb3_utils.py",
+            // "module": "rl_utils.sb3_utils",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--env=CartPole-v1",
+                "--algo=PPO",
+                "--policy=MlpPolicy",
+                "--timesteps=50000",
+                "--log-path=logs",
+                "--timestamp",
+                "--video-length=3000",
+                "--seed=12345",
+                "--verbose=1",
+            ],
+        },
+        {
+            "name": "ex_train_cfg",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/rl_utils/sb3_utils.py",
+            // "module": "rl_utils.sb3_utils",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                // "--env-config=examples/env_cfg.yml",
+                "--env-config=examples/env_cfg.py",
+                // "--model-config=examples/model_cfg.yml",
+                "--model-config=examples/model_cfg.py",
+                "--log-path=logs/",
+                "--timestamp",
+                "--video-length=3000",
+                "--seed=12345",
+                "--verbose=1",
+            ],
+        },
     ]
 }
