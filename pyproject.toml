@@ -66,6 +66,7 @@ packages = ["src/rl_utils"]
 
 [tool.hatch.envs.default]
 python = "3.11"
+pre-install-commands = ["pip install --upgrade pip"]
 
 [tool.hatch.envs.dev]
 features = ["dev", "extras"]
