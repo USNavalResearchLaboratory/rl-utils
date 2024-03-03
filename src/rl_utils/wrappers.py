@@ -60,15 +60,7 @@ class MoveAxisWrapper(gym.ObservationWrapper):
 
 
 class OneHotWrapper(gym.ObservationWrapper):
-    """One-hot encodes the observation.
-
-    Uses `gym.spaces.Box` observation space rather than `gym.spaces.MultiDiscrete` for
-    `stable-baselines3` compatibility.
-
-    Args:
-        gym: Base environment.
-
-    """
+    """One-hot encodes the observation."""
 
     def __init__(self, env: gym.Env):
         super().__init__(env)
