@@ -1,5 +1,7 @@
 """Additional `gymnasium` spaces and utilities."""
 
+from collections import OrderedDict
+
 import numpy as np
 from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
 
@@ -27,7 +29,7 @@ def reshape(space, shape):
         return Tuple(_spaces)
     elif isinstance(space, Dict):
         _spaces = {k: reshape(s, shape) for k, s in space.spaces.items()}
-        return Dict(_spaces)
+        return Dict(OrderedDict(_spaces))
     else:
         raise NotImplementedError
 
@@ -53,7 +55,20 @@ def broadcast_to(space, shape):
         return Tuple(_spaces)
     elif isinstance(space, Dict):
         _spaces = {k: broadcast_to(s, shape) for k, s in space.spaces.items()}
-        return Dict(_spaces)
+        return Dict(OrderedDict(_spaces))
+    else:
+        raise NotImplementedError
+
+
+def broadcast_prepend(space, shape):
+    if isinstance(space, Box | MultiDiscrete | Discrete | MultiBinary):
+        return broadcast_to(space, shape + space.shape)
+    elif isinstance(space, Tuple):
+        _spaces = tuple(broadcast_prepend(s, shape) for s in space.spaces)
+        return Tuple(_spaces)
+    elif isinstance(space, Dict):
+        _spaces = {k: broadcast_prepend(s, shape) for k, s in space.spaces.items()}
+        return Dict(OrderedDict(_spaces))
     else:
         raise NotImplementedError
 
@@ -75,7 +90,7 @@ def tile(space, reps):
         return Tuple(_spaces)
     elif isinstance(space, Dict):
         _spaces = {k: tile(s, reps) for k, s in space.spaces.items()}
-        return Dict(_spaces)
+        return Dict(OrderedDict(_spaces))
     else:
         raise NotImplementedError
 
