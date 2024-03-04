@@ -1,12 +1,37 @@
 """Additional `gymnasium` spaces and utilities."""
 
 import numpy as np
-from gymnasium.spaces import Box, Discrete, MultiDiscrete
+from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
 
 # TODO: refactor transforms using `singledispatch`
 
 
 # Transforms
+def reshape(space, shape):
+    """Reshape space."""
+    if isinstance(space, Box):
+        low, high = space.low.reshape(shape), space.high.reshape(shape)
+        return Box(low, high, dtype=float)
+    elif isinstance(space, MultiDiscrete):
+        return MultiDiscrete(space.nvec.reshape(shape))
+    elif isinstance(space, Discrete):
+        # if shape == ():
+        #     return space
+        return reshape(MultiDiscrete(space.n), shape)
+    elif isinstance(space, MultiBinary):
+        _tmp = np.empty(space.shape, space.dtype)
+        _tmp = _tmp.reshape(shape)  # raises exception if shapes not compatible
+        return MultiBinary(_tmp.shape)
+    elif isinstance(space, Tuple):
+        _spaces = tuple(reshape(s, shape) for s in space.spaces)
+        return Tuple(_spaces)
+    elif isinstance(space, Dict):
+        _spaces = {k: reshape(s, shape) for k, s in space.spaces.items()}
+        return Dict(_spaces)
+    else:
+        raise NotImplementedError
+
+
 def broadcast_to(space, shape):
     """Broadcast space to new shape."""
     if isinstance(space, Box):
@@ -18,12 +43,44 @@ def broadcast_to(space, shape):
     elif isinstance(space, MultiDiscrete):
         return MultiDiscrete(np.broadcast_to(space.nvec, shape))
     elif isinstance(space, Discrete):
-        return MultiDiscrete(np.broadcast_to(space.n, shape))
+        # if shape == ():
+        #     return space
+        return broadcast_to(MultiDiscrete(space.n), shape)
+    elif isinstance(space, MultiBinary):
+        return MultiBinary(np.broadcast_shapes(space.shape, shape))
+    elif isinstance(space, Tuple):
+        _spaces = tuple(broadcast_to(s, shape) for s in space.spaces)
+        return Tuple(_spaces)
+    elif isinstance(space, Dict):
+        _spaces = {k: broadcast_to(s, shape) for k, s in space.spaces.items()}
+        return Dict(_spaces)
     else:
-        raise NotImplementedError("Only supported for Box and MultiDiscrete spaces.")
+        raise NotImplementedError
 
 
-def get_space_lims(space):
+def tile(space, reps):
+    if isinstance(space, Box):
+        low, high = np.tile(space.low, reps), np.tile(space.high, reps)
+        return Box(low, high, dtype=float)
+    elif isinstance(space, MultiDiscrete):
+        return MultiDiscrete(np.tile(space.nvec, reps))
+    elif isinstance(space, Discrete):
+        return tile(MultiDiscrete(space.n), reps)
+    elif isinstance(space, MultiBinary):
+        _tmp = np.empty(space.shape, space.dtype)
+        _tmp = np.tile(_tmp, reps)
+        return MultiBinary(_tmp.shape)
+    elif isinstance(space, Tuple):
+        _spaces = tuple(tile(s, reps) for s in space.spaces)
+        return Tuple(_spaces)
+    elif isinstance(space, Dict):
+        _spaces = {k: tile(s, reps) for k, s in space.spaces.items()}
+        return Dict(_spaces)
+    else:
+        raise NotImplementedError
+
+
+def _get_space_lims(space):
     """Get minimum and maximum values of a space."""
     if isinstance(space, Box):
         return np.stack((space.low, space.high))
@@ -32,15 +89,13 @@ def get_space_lims(space):
     elif isinstance(space, MultiDiscrete):
         return np.stack((np.zeros(space.shape), space.nvec - 1))
     else:
-        raise NotImplementedError(
-            "Only supported for Box, Discrete, or DiscreteSet spaces."
-        )
+        raise NotImplementedError
 
 
 def stack(spaces, axis=0):
     """Join a sequence of spaces along a new axis.
 
-    Does 'upcasting' to superset spaces when required.
+    'Upcasts' to superset space when required.
     """
     if len(spaces) == 1:
         return spaces[0]
@@ -52,7 +107,7 @@ def stack(spaces, axis=0):
         nvecs = [space.nvec for space in spaces]
         return MultiDiscrete(np.stack(nvecs, axis=axis))
     else:
-        lows, highs = zip(*(get_space_lims(space) for space in spaces))
+        lows, highs = zip(*(_get_space_lims(space) for space in spaces))
         low, high = np.stack(lows, axis=axis), np.stack(highs, axis=axis)
         return Box(low, high, dtype=float)
 
@@ -60,7 +115,7 @@ def stack(spaces, axis=0):
 def concatenate(spaces, axis=0):
     """Join a sequence of spaces along an existing axis.
 
-    'Upcasts' to superset spaces when required.
+    'Upcasts' to superset space when required.
     """
     if len(spaces) == 1:
         return spaces[0]
@@ -69,20 +124,9 @@ def concatenate(spaces, axis=0):
         nvecs = [space.nvec for space in spaces]
         return MultiDiscrete(np.concatenate(nvecs, axis=axis))
     else:
-        lows, highs = zip(*(get_space_lims(space) for space in spaces))
+        lows, highs = zip(*(_get_space_lims(space) for space in spaces))
         low, high = np.concatenate(lows, axis=axis), np.concatenate(highs, axis=axis)
         return Box(low, high, dtype=float)
-
-
-def reshape(space, shape):
-    """Reshape space."""
-    if isinstance(space, Box):
-        low, high = space.low.reshape(shape), space.high.reshape(shape)
-        return Box(low, high, dtype=float)
-    elif isinstance(space, MultiDiscrete):
-        return MultiDiscrete(space.nvec.reshape(shape))
-    else:
-        raise NotImplementedError
 
 
 # Space classes
