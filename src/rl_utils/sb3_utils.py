@@ -28,7 +28,6 @@ from stable_baselines3.common.type_aliases import GymEnv
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv
 from torch import nn
 
-MaybeWrapper = str | gym.Wrapper
 WrapFactorySeq = Sequence[str | Callable[[gym.Env], gym.Wrapper]]
 PathOrStr = str | os.PathLike
 

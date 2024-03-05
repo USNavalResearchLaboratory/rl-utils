@@ -16,8 +16,7 @@
             "name": "ex_train_cli",
             "type": "debugpy",
             "request": "launch",
-            "program": "src/rl_utils/sb3_utils.py",
-            // "module": "rl_utils.sb3_utils",
+            "module": "rl_utils.sb3_utils",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
@@ -36,8 +35,7 @@
             "name": "ex_train_cfg",
             "type": "debugpy",
             "request": "launch",
-            "program": "src/rl_utils/sb3_utils.py",
-            // "module": "rl_utils.sb3_utils",
+            "module": "rl_utils.sb3_utils",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
