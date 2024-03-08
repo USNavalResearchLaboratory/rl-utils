@@ -61,7 +61,6 @@ extras = [
 ]
 
 [tool.hatch.build]
-ignore-vcs = true
 packages = ["src/rl_utils"]
 
 [tool.hatch.envs.default]

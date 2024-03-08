@@ -1,4 +1,6 @@
 import argparse
+import importlib
+import json
 import os
 import pickle
 import sys
@@ -6,7 +8,6 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from functools import partial
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -28,11 +29,71 @@ from stable_baselines3.common.type_aliases import GymEnv
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv
 from torch import nn
 
-WrapFactorySeq = Sequence[str | Callable[[gym.Env], gym.Wrapper]]
+# TODO: better separate model cfg, algo vs learning
+# TODO: rework CLI parsing w/ defaults and `Namespace`?
+
 PathOrStr = str | os.PathLike
 
-# TODO: add CLI args for common stopping callback parameters?
-# TODO: rework CLI parsing w/ defaults and `Namespace`?
+
+def _load_attr(entry_point: str) -> Any:
+    """Load module attribute from string specification.
+
+    Assumes `entry_point` is of the form "<module>:<attr>", where <module> can
+    be a subpackage (e.g. "foo.bar") and <attr> is the attribute to load "module".
+
+    Note:
+        Derived from `gymnasium.envs.registration.load_env_creator`.
+
+    Args:
+        entry_point: The string specification "<module>:<attr>"
+
+    Returns:
+        The desired attribute, as if `from <module> import <attr>` had been executed.
+    """
+    # _prefix = "import::"
+    # if entry_point.startswith(_prefix):
+    #     entry_point = entry_point.removeprefix(_prefix)
+    # else:
+    #     raise ValueError
+    if ":" not in entry_point:
+        raise ValueError
+    mod_name, attr_name = entry_point.split(":")
+    mod = importlib.import_module(mod_name)
+    return getattr(mod, attr_name)
+
+
+def load_attributes(obj: Any):
+    """Recursively load attributes from string specification.
+
+    Note:
+        See `_load_attr` for a description of the spec syntax.
+    """
+    if isinstance(obj, dict):
+        return {k: load_attributes(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return list(map(load_attributes, obj))
+    elif isinstance(obj, str):
+        try:
+            return _load_attr(obj)
+        except ValueError:
+            return obj
+    else:
+        return obj
+
+
+def _make_from_spec(spec):
+    """Instantiate object from constructor/args specification.
+
+    Input `spec` is a constructor with an optional kwarg dictionary. If a the
+    constructor is a `str`, it is loaded using `_load_attr`.
+    """
+    if isinstance(spec, Sequence):
+        entry_point, kwargs = spec
+    else:
+        entry_point, kwargs = spec, {}
+    if isinstance(entry_point, str):
+        entry_point = _load_attr(entry_point)
+    return entry_point(**kwargs)
 
 
 def get_now():
@@ -43,45 +104,10 @@ def get_now():
     return str_
 
 
-def make_env(
-    env_id: str | EnvSpec,
-    env_kwargs: dict[str, Any] | None = None,
-    max_episode_steps: int | None = None,
-    wrappers: WrapFactorySeq | None = None,
-) -> gym.Env:
-    """Create single wrapped environment.
-
-    Args:
-        env_id: Name of the environment. Optionally, a module to import can be included,
-            eg. 'module:Env-v0'
-        env_kwargs: Additional arguments to pass to the environment constructor.
-        max_episode_steps: Maximum length of an episode (TimeLimit wrapper).
-        wrappers: Sequence of wrapper factories to apply to the environment.
-
-    Returns:
-        Wrapped environment.
-
-    """
-    if env_kwargs is None:
-        env_kwargs = {}
-    env = gym.make(env_id, max_episode_steps, **env_kwargs)
-
-    if wrappers is None:
-        wrappers = []
-    for item in wrappers:
-        if isinstance(item, str):
-            factory = getattr(gym.wrappers, item)
-        else:
-            factory = item
-        env = factory(env)
-    return env
-
-
 def _make_vec_env(
     env_id: str | EnvSpec,
     env_kwargs: dict[str, Any] | None = None,
     max_episode_steps: int | None = None,
-    wrappers: WrapFactorySeq | None = None,
     n_envs: int = 1,
     multiproc: bool = False,
     seed: int | None = None,
@@ -93,7 +119,6 @@ def _make_vec_env(
             eg. 'module:Env-v0'
         env_kwargs: Additional arguments to pass to the environment constructor.
         max_episode_steps: Maximum length of an episode (TimeLimit wrapper).
-        wrappers: Sequence of wrapper factories to apply to the environment.
         n_envs: The number of environments you wish to have in parallel.
         multiproc: Activates use of `SubprocVecEnv` instead of `DummyVecEnv`.
         seed: The initial seed for the random number generator.
@@ -102,7 +127,9 @@ def _make_vec_env(
         Vectorized wrapped environment.
 
     """
-    func = partial(make_env, env_id, env_kwargs, max_episode_steps, wrappers)
+    if env_kwargs is None:
+        env_kwargs = {}
+    func = partial(gym.make, env_id, max_episode_steps, **env_kwargs)
     vec_env_cls = SubprocVecEnv if multiproc and n_envs > 1 else None
     env = make_vec_env(func, n_envs=n_envs, seed=seed, vec_env_cls=vec_env_cls)
     return env
@@ -227,6 +254,8 @@ class LogTruncationCallback(BaseCallback):
 
     """
 
+    # TODO: move to a separate module
+
     def _on_training_start(self) -> None:
         self.buffer: deque = deque(maxlen=self.model._stats_window_size)
 
@@ -347,6 +376,7 @@ def _update_algo_kwargs(
         algo_kwargs = {}
     else:
         algo_kwargs = kwargs.copy()
+
     algo_kwargs["seed"] = seed
     algo_kwargs["tensorboard_log"] = str(log_path)
     algo_kwargs["verbose"] = verbose
@@ -358,6 +388,7 @@ def _update_algo_kwargs(
             activation_fn = policy_kwargs["activation_fn"]
             if isinstance(activation_fn, str):
                 policy_kwargs["activation_fn"] = getattr(nn, activation_fn)
+
     return algo_kwargs
 
 
@@ -401,7 +432,7 @@ def _make_model(
     _format_strings = []
     if verbose >= 1:
         _format_strings.append("stdout")
-    if find_spec("tensorboard") is not None:
+    if importlib.util.find_spec("tensorboard") is not None:
         _format_strings.append("tensorboard")
     _logger = configure(str(log_path), _format_strings)
     model.set_logger(_logger)
@@ -418,7 +449,6 @@ def _update_eval_callback_kwargs(
 ) -> dict[str, Any]:
     """Update `EvalCallback` kwargs.
 
-    Sets Tensorboard log path and converts `str` activation policy kwarg.
     Handles custom kwarg `eval_freq_total` for multiprocessing; note that SB3 kwarg
     `eval_freq` actually specifies the number of steps per environment. Assumes
     "callback_*" kwargs are constructors and are used to instantiate `BaseCallback`
@@ -439,23 +469,24 @@ def _update_eval_callback_kwargs(
         eval_callback_kwargs = {}
     else:
         eval_callback_kwargs = kwargs.copy()
+
     eval_callback_kwargs["deterministic"] = deterministic
     eval_callback_kwargs["log_path"] = str(log_path)
     eval_callback_kwargs["best_model_save_path"] = str(log_path)
     eval_callback_kwargs["verbose"] = verbose
-    if "callback_on_new_best" in eval_callback_kwargs:
-        _factory = eval_callback_kwargs.pop("callback_on_new_best")
-        eval_callback_kwargs["callback_on_new_best"] = _factory()
-    if "callback_on_new_best" in eval_callback_kwargs:
-        eval_callback_kwargs["callback_on_new_best"].verbose = verbose
-    if "callback_after_eval" in eval_callback_kwargs:
-        _factory = eval_callback_kwargs.pop("callback_after_eval")
-        eval_callback_kwargs["callback_after_eval"] = _factory()
-    if "callback_after_eval" in eval_callback_kwargs:
-        eval_callback_kwargs["callback_after_eval"].verbose = verbose
     if "eval_freq_total" in eval_callback_kwargs:
         eval_freq_total = eval_callback_kwargs.pop("eval_freq_total")
         eval_callback_kwargs["eval_freq"] = max(eval_freq_total // n_envs, 1)
+
+    for k in ("callback_on_new_best", "callback_after_eval"):
+        if k in eval_callback_kwargs:
+            eval_callback_kwargs[k] = _make_from_spec(eval_callback_kwargs.pop(k))
+
+    if "callback_on_new_best" in eval_callback_kwargs:
+        eval_callback_kwargs["callback_on_new_best"].verbose = verbose
+    if "callback_after_eval" in eval_callback_kwargs:
+        eval_callback_kwargs["callback_after_eval"].verbose = verbose
+
     return eval_callback_kwargs
 
 
@@ -481,11 +512,10 @@ def train(
     policy: str | BasePolicy,
     env_kwargs: dict[str, Any] | None = None,
     max_episode_steps: int | None = None,
-    wrappers: WrapFactorySeq | None = None,
     algo_kwargs: dict[str, Any] | None = None,
     params_path: PathOrStr | None = None,
     total_timesteps: int = 0,
-    callbacks: list[Callable] | None = None,
+    callbacks: list[BaseCallback | list] | None = None,
     eval_callback_kwargs: dict[str, Any] | None = None,
     deterministic: bool = True,
     n_envs: int = 1,
@@ -504,11 +534,10 @@ def train(
         policy: Stable-Baselines3 policy.
         env_kwargs: Additional arguments to pass to the environment constructor.
         max_episode_steps: Maximum length of an episode (TimeLimit wrapper).
-        wrappers: Sequence of wrapper factories to apply to the environment.
         algo_kwargs: Additional arguments to pass to the algorithm constructor.
         params_path: Path to saved initial model parameters.
         total_timesteps: The total number of samples (env steps) to train on.
-        callbacks: Constructors for SB3 callback objects.
+        callbacks: Constructor specs for SB3 callback objects.
         eval_callback_kwargs: Additional arguments to pass to the `EvalCallback`
             constructor.
         deterministic: Whether to use deterministic or stochastic actions.
@@ -525,13 +554,11 @@ def train(
     if callbacks is None:
         callback_list = []
     else:
-        callback_list = [cb() for cb in callbacks]
+        callback_list = list(map(_make_from_spec, callbacks))
 
-    env = _make_vec_env(
-        env_id, env_kwargs, max_episode_steps, wrappers, n_envs, multiproc
-    )
+    env = _make_vec_env(env_id, env_kwargs, max_episode_steps, n_envs, multiproc)
     eval_env = _make_vec_env(
-        env_id, env_kwargs, max_episode_steps, wrappers, n_envs, multiproc, seed
+        env_id, env_kwargs, max_episode_steps, n_envs, multiproc, seed
     )
 
     model = _make_model(
@@ -565,7 +592,7 @@ def train(
     if video_length > 0:
         _kwargs = env_kwargs.copy() if env_kwargs is not None else {}
         _kwargs["render_mode"] = "rgb_array"
-        render_env = make_env(env_id, _kwargs, max_episode_steps, wrappers)
+        render_env = gym.make(env_id, max_episode_steps, **_kwargs)
         record_vid(
             model, render_env, video_length, deterministic, str(log_path), seed=seed
         )
@@ -585,11 +612,10 @@ def hyperopt(
     optimize_kwargs: dict[str, Any] | None = None,
     env_kwargs: dict[str, Any] | None = None,
     max_episode_steps: int | None = None,
-    wrappers: WrapFactorySeq | None = None,
     algo_kwargs: dict[str, Any] | None = None,
     params_path: PathOrStr | None = None,
     total_timesteps: int = 0,
-    callbacks: list[Callable] | None = None,
+    callbacks: list[BaseCallback | list] | None = None,
     eval_callback_kwargs: dict[str, Any] | None = None,
     deterministic: bool = True,
     n_envs: int = 1,
@@ -611,11 +637,10 @@ def hyperopt(
         optimize_kwargs: Additional arguments to pass to `study.optimize`.
         env_kwargs: Additional arguments to pass to the environment constructor.
         max_episode_steps: Maximum length of an episode (TimeLimit wrapper).
-        wrappers: Sequence of wrapper factories to apply to the environment.
         algo_kwargs: Additional arguments to pass to the algorithm constructor.
         params_path: Path to saved initial model parameters.
         total_timesteps: The total number of samples (env steps) to train on.
-        callbacks: Constructors for SB3 callback objects.
+        callbacks: Constructor specs for SB3 callback objects.
         eval_callback_kwargs: Additional arguments to pass to the `EvalCallback`
             constructor.
         deterministic: Whether to use deterministic or stochastic actions.
@@ -634,7 +659,7 @@ def hyperopt(
     if callbacks is None:
         callback_list = []
     else:
-        callback_list = [cb() for cb in callbacks]
+        callback_list = list(map(_make_from_spec, callbacks))
 
     def objective(trial):
         trial_path = log_path / f"T{trial.number}/"
@@ -643,11 +668,9 @@ def hyperopt(
         with open(trial_path / "params.yml", "w") as f:
             yaml.dump(trial.params, f)
 
-        env = _make_vec_env(
-            env_id, env_kwargs, max_episode_steps, wrappers, n_envs, multiproc
-        )
+        env = _make_vec_env(env_id, env_kwargs, max_episode_steps, n_envs, multiproc)
         eval_env = _make_vec_env(
-            env_id, env_kwargs, max_episode_steps, wrappers, n_envs, multiproc, seed
+            env_id, env_kwargs, max_episode_steps, n_envs, multiproc, seed
         )
 
         model = _make_model(
@@ -692,7 +715,7 @@ def hyperopt(
         # if video_length > 0:
         #     _kwargs = env_kwargs.copy() if env_kwargs is not None else {}
         #     _kwargs["render_mode"] = "rgb_array"
-        #     render_env = make_env(env_id, _kwargs, max_episode_steps, wrappers)
+        #     render_env = gym.make(env_id, max_episode_steps, **_kwargs)
         #     record_vid(
         #         model,
         #         render_env,
@@ -802,35 +825,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load config
-    kwargs: dict[str, Any] = dict(algo_kwargs={}, eval_callback_kwargs={})
-
     if args.env_config is not None:
-        path = args.env_config
-        if path.endswith((".yml", ".yaml")):
-            with open(path) as f:
-                env_cfg = yaml.safe_load(f)
-        elif path.endswith(".py"):
-            _env_globals: dict = {}
-            exec(Path(path).read_text(), _env_globals)
-            env_cfg = _env_globals["env_cfg"]
-        else:
-            raise ValueError
-        env_id = env_cfg.pop("id")
-        kwargs |= env_cfg
+        with open(args.env_config) as f:
+            env_id = EnvSpec.from_json(f.read())
 
-    hyperopt_cfg = None
+    kwargs: dict[str, Any] = dict(algo_kwargs={}, eval_callback_kwargs={})
+    hyperopt_cfg = None  # FIXME
     if args.model_config is not None:
-        path = args.model_config
-        if path.endswith((".yml", ".yaml")):
-            with open(path) as f:
-                model_cfg = yaml.safe_load(f)
-        elif path.endswith(".py"):
-            _model_globals: dict = {}
-            exec(Path(path).read_text(), _model_globals)
-            model_cfg = _model_globals["model_cfg"]
-            hyperopt_cfg = _model_globals.get("hyper_cfg")
-        else:
-            raise ValueError
+        with open(args.model_config) as f:
+            _cfg = json.loads(f.read())
+        model_cfg = load_attributes(_cfg)
+
         algo = model_cfg.pop("algo")
         policy = model_cfg.pop("policy")
         kwargs |= model_cfg

@@ -1,25 +1,21 @@
 import argparse
-from pathlib import Path
 from typing import Any
 
+import gymnasium as gym
 import pygame
-import yaml
-
-from rl_utils.sb3_utils import EnvSpec, WrapFactorySeq, make_env
+from gymnasium.envs.registration import EnvSpec
 
 
 def play(  # noqa: C901
     env_id: str | EnvSpec,
     key_to_action: dict[str, Any],
     env_kwargs: dict[str, Any] | None = None,
-    max_episode_steps: int | None = None,
-    wrappers: WrapFactorySeq | None = None,
     verbose: bool = False,
 ):
     if env_kwargs is None:
         env_kwargs = {}
     env_kwargs["render_mode"] = "human"
-    env = make_env(env_id, env_kwargs, max_episode_steps, wrappers)
+    env = gym.make(env_id, **env_kwargs)
 
     def _log(msg: str):
         if verbose:
@@ -65,43 +61,24 @@ def play(  # noqa: C901
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Play an environment.")
 
-    parser.add_argument("--env-config", help="Path to env config file.")
-
+    parser.add_argument("--config", help="Path to env config file.")
     parser.add_argument("--env", help="Environment ID.")
     parser.add_argument(
         "--keys", nargs="*", help="Sequence of keys that map to `Discrete` actions."
     )
-    parser.add_argument(
-        "--max-ep-steps", type=int, help="Maximum episode length in steps."
-    )
-
     parser.add_argument("--verbose", action="store_true", help="Enable verbosity.")
 
     args = parser.parse_args()
 
     # Load config
-    kwargs: dict[str, Any] = {}
-
-    if args.env_config is not None:
-        path = args.env_config
-        if path.endswith((".yml", ".yaml")):
-            with open(path) as f:
-                env_cfg = yaml.safe_load(f)
-        elif path.endswith(".py"):
-            _env_globals: dict = {}
-            exec(Path(path).read_text(), _env_globals)
-            env_cfg = _env_globals["env_cfg"]
-        else:
-            raise ValueError
-        env_id = env_cfg.pop("id")
-        kwargs |= env_cfg
+    if args.config is not None:
+        with open(args.config) as f:
+            env_id = EnvSpec.from_json(f.read())
 
     # CLI overrides
     if args.env is not None:
         env_id = args.env
     if args.keys is not None:
         key_to_action = dict(zip(args.keys, range(len(args.keys))))
-    if args.max_ep_steps is not None:
-        kwargs["max_episode_steps"] = args.max_ep_steps
 
-    play(env_id, key_to_action, verbose=args.verbose, **kwargs)
+    play(env_id, key_to_action, verbose=args.verbose)

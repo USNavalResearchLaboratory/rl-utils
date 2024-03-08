@@ -1,0 +1,41 @@
+{
+    "algo": "PPO",
+    "policy": "MlpPolicy",
+    "algo_kwargs": {
+        "policy_kwargs": {
+            "features_extractor_class": "rl_utils.extractors:MLPExtractor",
+            "features_extractor_kwargs": {
+                "hidden_sizes": [ 1024 ]
+            },
+            "net_arch": {
+                "pi": [ 64, 64 ],
+                "vf": [ 64, 64 ]
+            },
+            "activation_fn": "ReLU",
+            "normalize_images": false
+        },
+        "learning_rate": 0.0003,
+        "n_steps_total": 2048,
+        "batch_size": 64,
+        "n_epochs": 10,
+        "gamma": 0.99
+    },
+    "params_path": null,
+    "total_timesteps": 50000,
+    "callbacks": [ "rl_utils.sb3_utils:LogTruncationCallback" ],
+    "eval_callback_kwargs": {
+        "callback_on_new_best": [
+            "stable_baselines3.common.callbacks:StopTrainingOnRewardThreshold",
+            { "reward_threshold": 975 }
+        ],
+        "callback_after_eval": [
+            "stable_baselines3.common.callbacks:StopTrainingOnNoModelImprovement",
+            {
+                "max_no_improvement_evals": 3,
+                "min_evals": 2
+            }
+        ],
+        "n_eval_episodes": 100,
+        "eval_freq_total": 10000
+    }
+}

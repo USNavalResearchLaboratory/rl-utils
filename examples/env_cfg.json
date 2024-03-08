@@ -1,0 +1,14 @@
+{
+    "id": "tmp",
+    "entry_point": "gymnasium.envs.classic_control.cartpole:CartPoleEnv",
+    "vector_entry_point": "gymnasium.envs.classic_control.cartpole:CartPoleVectorEnv",
+    "reward_threshold": 975.0,
+    "max_episode_steps": 1000,
+    "additional_wrappers": [
+        {
+            "name": "RecordEpisodeStatistics",
+            "entry_point": "gymnasium.wrappers:RecordEpisodeStatistics",
+            "kwargs": { }
+        }
+    ]
+}
