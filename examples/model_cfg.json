@@ -3,7 +3,7 @@
     "policy": "MlpPolicy",
     "algo_kwargs": {
         "policy_kwargs": {
-            "features_extractor_class": "rl_utils.extractors:MLPExtractor",
+            "features_extractor_class": "rl_utils.sb3.extractors:MLPExtractor",
             "features_extractor_kwargs": {
                 "hidden_sizes": [ 1024 ]
             },
@@ -22,7 +22,7 @@
     },
     "params_path": null,
     "total_timesteps": 50000,
-    "callbacks": [ "rl_utils.sb3_utils:LogTruncationCallback" ],
+    "callbacks": [ "rl_utils.sb3.callbacks:LogTruncationCallback" ],
     "eval_callback_kwargs": {
         "callback_on_new_best": [
             "stable_baselines3.common.callbacks:StopTrainingOnRewardThreshold",
