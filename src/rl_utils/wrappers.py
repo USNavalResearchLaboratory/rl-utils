@@ -2,22 +2,6 @@ import gymnasium as gym
 import numpy as np
 
 
-def check_wraps(env, *, req_wrappers=(), invalid_wrappers=()):
-    req_flags = dict(zip(req_wrappers, [False] * len(req_wrappers)))
-    while isinstance(env, gym.Wrapper):
-        for wrapper in req_wrappers:
-            if isinstance(env, wrapper):
-                req_flags[wrapper] = True
-        if isinstance(env, tuple(invalid_wrappers)):
-            return False
-            # raise ValueError(f"Environment is wrapped by invalid {env.__class__}.")
-        env = env.env
-    # if not all(req_flags.values()):
-    #     missing_keys = {k for k, v in req_flags.items() if not v}
-    #     raise ValueError(f"Missing required wrappers: {', '.join(missing_keys)}")
-    return all(req_flags.values())
-
-
 class ResetOptionsWrapper(gym.Wrapper):
     def __init__(self, env, *, options=None):
         super().__init__(env)
@@ -62,28 +46,29 @@ class MoveAxisWrapper(gym.ObservationWrapper):
 class OneHotWrapper(gym.ObservationWrapper):
     """One-hot encodes the observation."""
 
-    def __init__(self, env: gym.Env):
+    def __init__(self, env: gym.Env, redundant: bool = False):
         super().__init__(env)
-        if isinstance(self.observation_space, gym.spaces.MultiDiscrete):
-            n_e = self.observation_space.nvec.max()  # TODO: disallow diff `nvec` vals?
-        else:
-            # TODO: allow `gym.spaces.Box` via n_encoding arg. `high`, `dtype`...
+        if not isinstance(self.observation_space, gym.spaces.MultiDiscrete):
             raise TypeError
-        self.observation_space = gym.spaces.MultiBinary(
-            (*self.observation_space.shape, n_e)
-        )
-        self._eye = np.eye(n_e, dtype=self.observation_space.dtype)
+
+        self.redundant = redundant
+
+        self._n_e = self.observation_space.nvec.flatten()
+        n_enc = sum(self._n_e)
+        if not redundant:
+            n_enc -= len(self._n_e)
+        self.observation_space = gym.spaces.MultiBinary(n_enc)
 
     def observation(self, obs):
         """Perform one-hot encoding on the observation."""
-        # out = np.zeros(
-        #     self.observation_space.shape,
-        #     dtype=self.observation_space.dtype,
-        # )
-        # idx = np.ix_(*map(np.arange, out.shape[:-1])) + (obs,)
-        # out[idx] = 1
-        # return out
-        return self._eye[obs]
+        slices = []
+        for n, obs_i in zip(self._n_e, obs.flatten()):
+            s = np.zeros(n, dtype=self.observation_space.dtype)
+            s[obs_i] = 1
+            if not self.redundant:
+                s = s[1:]
+            slices.append(s)
+        return np.concatenate(slices)
 
 
 class StepPenalty(gym.RewardWrapper):
@@ -109,3 +94,19 @@ class StepPenalty(gym.RewardWrapper):
 #         reward *= self.gamma**self.i_step
 #         self.i_step += 1
 #         return reward
+
+
+# def check_wraps(env, *, req_wrappers=(), invalid_wrappers=()):
+#     req_flags = dict(zip(req_wrappers, [False] * len(req_wrappers)))
+#     while isinstance(env, gym.Wrapper):
+#         for wrapper in req_wrappers:
+#             if isinstance(env, wrapper):
+#                 req_flags[wrapper] = True
+#         if isinstance(env, tuple(invalid_wrappers)):
+#             return False
+#             # raise ValueError(f"Environment is wrapped by invalid {env.__class__}.")
+#         env = env.env
+#     # if not all(req_flags.values()):
+#     #     missing_keys = {k for k, v in req_flags.items() if not v}
+#     #     raise ValueError(f"Missing required wrappers: {', '.join(missing_keys)}")
+#     return all(req_flags.values())
