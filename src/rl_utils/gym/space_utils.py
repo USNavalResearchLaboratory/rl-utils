@@ -1,11 +1,29 @@
 """Additional `gymnasium` spaces and utilities."""
 
 from collections import OrderedDict
+from functools import wraps
 
 import numpy as np
 from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
 
 # TODO: refactor transforms using `singledispatch`
+
+
+def recurse(fn):
+    @wraps(fn)
+    def _recursive_fn(space, *args, **kwargs):
+        if isinstance(space, Tuple):
+            _spaces = tuple(_recursive_fn(s, *args, **kwargs) for s in space.spaces)
+            return Tuple(_spaces)
+        elif isinstance(space, Dict):
+            _spaces = {
+                k: _recursive_fn(s, *args, **kwargs) for k, s in space.spaces.items()
+            }
+            return Dict(OrderedDict(_spaces))
+        else:
+            return fn(space, *args, **kwargs)
+
+    return _recursive_fn
 
 
 # Transforms
@@ -24,12 +42,6 @@ def reshape(space, shape):
         _tmp = np.empty(space.shape, space.dtype)
         _tmp = _tmp.reshape(shape)  # raises exception if shapes not compatible
         return MultiBinary(_tmp.shape)
-    elif isinstance(space, Tuple):
-        _spaces = tuple(reshape(s, shape) for s in space.spaces)
-        return Tuple(_spaces)
-    elif isinstance(space, Dict):
-        _spaces = {k: reshape(s, shape) for k, s in space.spaces.items()}
-        return Dict(OrderedDict(_spaces))
     else:
         raise NotImplementedError
 
@@ -50,12 +62,6 @@ def broadcast_to(space, shape):
         return broadcast_to(MultiDiscrete(space.n), shape)
     elif isinstance(space, MultiBinary):
         return MultiBinary(np.broadcast_shapes(space.shape, shape))
-    elif isinstance(space, Tuple):
-        _spaces = tuple(broadcast_to(s, shape) for s in space.spaces)
-        return Tuple(_spaces)
-    elif isinstance(space, Dict):
-        _spaces = {k: broadcast_to(s, shape) for k, s in space.spaces.items()}
-        return Dict(OrderedDict(_spaces))
     else:
         raise NotImplementedError
 
@@ -63,12 +69,6 @@ def broadcast_to(space, shape):
 def broadcast_prepend(space, shape):
     if isinstance(space, Box | MultiDiscrete | Discrete | MultiBinary):
         return broadcast_to(space, shape + space.shape)
-    elif isinstance(space, Tuple):
-        _spaces = tuple(broadcast_prepend(s, shape) for s in space.spaces)
-        return Tuple(_spaces)
-    elif isinstance(space, Dict):
-        _spaces = {k: broadcast_prepend(s, shape) for k, s in space.spaces.items()}
-        return Dict(OrderedDict(_spaces))
     else:
         raise NotImplementedError
 
@@ -85,12 +85,25 @@ def tile(space, reps):
         _tmp = np.empty(space.shape, space.dtype)
         _tmp = np.tile(_tmp, reps)
         return MultiBinary(_tmp.shape)
-    elif isinstance(space, Tuple):
-        _spaces = tuple(tile(s, reps) for s in space.spaces)
-        return Tuple(_spaces)
-    elif isinstance(space, Dict):
-        _spaces = {k: tile(s, reps) for k, s in space.spaces.items()}
-        return Dict(OrderedDict(_spaces))
+    else:
+        raise NotImplementedError
+
+
+def moveaxis(space, source, destination):
+    if isinstance(space, Box):
+        return Box(
+            low=np.moveaxis(space.low, source, destination),
+            high=np.moveaxis(space.high, source, destination),
+            dtype=space.dtype,
+        )
+    elif isinstance(space, MultiDiscrete):
+        return MultiDiscrete(
+            nvec=np.moveaxis(space.nvec, source, destination), dtype=space.dtype
+        )
+    elif isinstance(space, MultiBinary):
+        n = np.moveaxis(np.ones(space.shape), source, destination).shape
+        # TODO: improve
+        return MultiBinary(n=n)
     else:
         raise NotImplementedError
 
@@ -127,7 +140,7 @@ def stack(spaces, axis=0):
         return Box(low, high, dtype=float)
 
 
-def concatenate(spaces, axis=0):
+def concatenate(spaces, axis=0):  # FIXME
     """Join a sequence of spaces along an existing axis.
 
     'Upcasts' to superset space when required.

@@ -17,30 +17,16 @@ class ResetOptionsWrapper(gym.Wrapper):
 
 
 class MoveAxisWrapper(gym.ObservationWrapper):
-    # TODO: refactor w/ single dispatch
-
     def __init__(self, env, source, destination):
         super().__init__(env)
-        self.s, self.d = source, destination
+        self.source, self.destination = source, destination
 
-        space = self.observation_space
-        if isinstance(space, gym.spaces.Box):
-            space = gym.spaces.Box(
-                low=np.moveaxis(space.low, self.s, self.d),
-                high=np.moveaxis(space.high, self.s, self.d),
-                dtype=space.dtype,
-            )
-        elif isinstance(space, gym.spaces.MultiDiscrete):
-            space = gym.spaces.MultiDiscrete(
-                nvec=np.moveaxis(space.nvec, self.s, self.d), dtype=space.dtype
-            )
-        elif isinstance(space, gym.spaces.MultiBinary):
-            n = np.moveaxis(np.ones(space.shape), self.s, self.d).shape  # TODO: better?
-            space = gym.spaces.MultiBinary(n=n)
-        self.observation_space = space
+        self.observation_space = space_utils.moveaxis(
+            self.observation_space, source, destination
+        )
 
     def observation(self, obs):
-        return np.moveaxis(obs, self.s, self.d)
+        return np.moveaxis(obs, self.source, self.destination)
 
 
 class OneHotWrapper(gym.ObservationWrapper):
