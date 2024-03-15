@@ -116,6 +116,8 @@ def _get_space_lims(space):
         return np.array([0, space.n - 1])
     elif isinstance(space, MultiDiscrete):
         return np.stack((np.zeros(space.shape), space.nvec - 1))
+    elif isinstance(space, MultiBinary):
+        return np.stack((np.zeros(space.shape), np.ones(space.shape)))
     else:
         raise NotImplementedError
 
@@ -153,7 +155,7 @@ def concatenate(spaces, axis=0):  # FIXME
         return MultiDiscrete(np.concatenate(nvecs, axis=axis))
     else:
         lows, highs = zip(*(_get_space_lims(space) for space in spaces))
-        low, high = np.concatenate(lows, axis=axis), np.concatenate(highs, axis=axis)
+        low, high = (np.concatenate(a, axis=axis) for a in (lows, highs))
         return Box(low, high, dtype=float)
 
 
