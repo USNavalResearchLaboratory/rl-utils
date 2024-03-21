@@ -24,30 +24,24 @@ class ResetOptionsWrapper(gym.Wrapper):
 class RecurseObsWrapper(gym.ObservationWrapper, ABC):
     def __init__(self, env: gym.Env):
         super().__init__(env)
+        self.observation_space, self.proc_fn = self._build(self.observation_space)
 
-        self.obs_proc = self._build_fn(self.observation_space)
-        self.observation_space = self._build_space(self.observation_space)
-
-    def _build_fn(self, space):
+    def _build(self, space):
         if isinstance(space, gym.spaces.Tuple):
-            return tuple(map(self._build_fn, space.spaces))
+            _spaces, fn = zip(*map(self._build, space.spaces))
+            space = gym.spaces.Tuple(_spaces)
+            return space, fn
         elif isinstance(space, gym.spaces.Dict):
-            return {k: self._build_fn(s) for k, s in space.spaces.items()}
+            keys, _spaces = zip(*space.spaces.items())
+            _spaces, _fn = zip(*map(self._build, _spaces))
+            space = gym.spaces.Dict(OrderedDict(zip(keys, _spaces)))
+            fn = dict(zip(keys, _fn))
+            return space, fn
         else:
-            return self._proc_space(space)[1]
-
-    def _build_space(self, space):
-        if isinstance(space, gym.spaces.Tuple):
-            _spaces = tuple(self._build_space(s) for s in space.spaces)
-            return gym.spaces.Tuple(_spaces)
-        elif isinstance(space, gym.spaces.Dict):
-            _spaces = {k: self._build_space(s) for k, s in space.spaces.items()}
-            return gym.spaces.Dict(OrderedDict(_spaces))
-        else:
-            return self._proc_space(space)[0]
+            return self._build_single(space)
 
     @abstractmethod
-    def _proc_space(self, space):
+    def _build_single(self, space):
         raise NotImplementedError
 
     def observation(self, obs):
@@ -59,7 +53,7 @@ class RecurseObsWrapper(gym.ObservationWrapper, ABC):
             else:
                 return func(obs)
 
-        return apply(obs, self.obs_proc)
+        return apply(obs, self.proc_fn)
 
 
 class RecurseOneHotWrapper(RecurseObsWrapper):
@@ -67,7 +61,7 @@ class RecurseOneHotWrapper(RecurseObsWrapper):
         self.redundant = redundant
         super().__init__(env)
 
-    def _proc_space(self, space):
+    def _build_single(self, space):
         if not isinstance(space, gym.spaces.MultiDiscrete):
             return space, lambda x: x  # TODO: super call?
 
@@ -77,7 +71,7 @@ class RecurseOneHotWrapper(RecurseObsWrapper):
             n_enc -= len(_n_e)
         space = gym.spaces.MultiBinary(n_enc)
 
-        def _proc_func(obs):
+        def fn(obs):
             slices = []
             for n, obs_i in zip(_n_e, obs.flatten()):
                 s = np.zeros(n, dtype=space.dtype)
@@ -87,7 +81,7 @@ class RecurseOneHotWrapper(RecurseObsWrapper):
                 slices.append(s)
             return np.concatenate(slices)
 
-        return space, _proc_func
+        return space, fn
 
 
 class RecurseMoveAxisWrapper(RecurseObsWrapper):
@@ -95,13 +89,13 @@ class RecurseMoveAxisWrapper(RecurseObsWrapper):
         self.source, self.destination = source, destination
         super().__init__(env)
 
-    def _proc_space(self, space):
+    def _build_single(self, space):
         space = space_utils.moveaxis(space, self.source, self.destination)
 
-        def _proc_func(obs):
+        def fn(obs):
             return np.moveaxis(obs, self.source, self.destination)
 
-        return space, _proc_func
+        return space, fn
 
 
 class MoveAxisWrapper(gym.ObservationWrapper):
