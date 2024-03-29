@@ -136,6 +136,10 @@ def stack(spaces, axis=0):
     elif all(isinstance(space, MultiDiscrete) for space in spaces):
         nvecs = [space.nvec for space in spaces]
         return MultiDiscrete(np.stack(nvecs, axis=axis))
+    elif all(isinstance(space, MultiBinary) for space in spaces):
+        tmp = tuple(np.empty(space.n) for space in spaces)
+        n = np.stack(tmp, axis=axis).shape
+        return MultiBinary(n)
     else:
         lows, highs = zip(*(_get_space_lims(space) for space in spaces))
         low, high = np.stack(lows, axis=axis), np.stack(highs, axis=axis)
@@ -153,6 +157,10 @@ def concatenate(spaces, axis=0):  # FIXME
     if all(isinstance(space, MultiDiscrete) for space in spaces):
         nvecs = [space.nvec for space in spaces]
         return MultiDiscrete(np.concatenate(nvecs, axis=axis))
+    elif all(isinstance(space, MultiBinary) for space in spaces):
+        tmp = tuple(np.empty(space.n) for space in spaces)
+        n = np.concatenate(tmp, axis=axis).shape
+        return MultiBinary(n)
     else:
         lows, highs = zip(*(_get_space_lims(space) for space in spaces))
         low, high = (np.concatenate(a, axis=axis) for a in (lows, highs))
