@@ -159,6 +159,20 @@ def concatenate(spaces, axis=0):  # FIXME
         return Box(low, high, dtype=float)
 
 
+def unnest(space):
+    def _fn(space):
+        if isinstance(space, Tuple):
+            for s_i in space:
+                yield from unnest(s_i)
+        elif isinstance(space, Dict):
+            for key in space:
+                yield from unnest(space[key])
+        else:
+            yield space
+
+    return Tuple(_fn(space))
+
+
 # Space classes
 class DiscreteMasked(Discrete):
     r"""A Discrete space with masked elements for sampling and membership testing.

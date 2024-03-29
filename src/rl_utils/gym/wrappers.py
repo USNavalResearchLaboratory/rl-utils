@@ -21,6 +21,97 @@ class ResetOptionsWrapper(gym.Wrapper):
         return self.env.reset(seed=seed, options=options)
 
 
+class GetItemWrapper(gym.ObservationWrapper):
+    def __init__(self, env, key):
+        super().__init__(env)
+        self.key = key
+        self.observation_space = self.observation_space[key]
+
+    def observation(self, observation):
+        return observation[self.key]
+
+
+class UnnestWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.observation_space = space_utils.unnest(self.observation_space)
+
+    def observation(self, observation):
+        def unnest(x):
+            if isinstance(x, tuple):
+                for x_i in x:
+                    yield from unnest(x_i)
+            elif isinstance(x, dict):
+                for x_i in x.values():
+                    yield from unnest(x_i)
+            else:
+                yield x
+
+        return tuple(unnest(observation))
+
+
+class ConcatWrapper(gym.ObservationWrapper):
+    def __init__(self, env: gym.Env, axis=0):
+        super().__init__(env)
+        self.axis = axis
+
+        if isinstance(self.observation_space, gym.spaces.Dict):
+            _spaces = tuple(self.observation_space.spaces.values())
+        elif isinstance(self.observation_space, gym.spaces.Tuple):
+            _spaces = self.observation_space.spaces
+        else:
+            raise TypeError
+        self.observation_space = space_utils.concatenate(_spaces, axis=axis)
+
+    def observation(self, observation):
+        if isinstance(observation, dict):
+            _arrs = tuple(observation.values())
+        else:
+            _arrs = observation
+        return np.concatenate(_arrs, self.axis)
+
+
+class MoveAxisWrapper(gym.ObservationWrapper):
+    def __init__(self, env, source, destination):
+        super().__init__(env)
+        self.source, self.destination = source, destination
+
+        self.observation_space = space_utils.moveaxis(
+            self.observation_space, source, destination
+        )
+
+    def observation(self, obs):
+        return np.moveaxis(obs, self.source, self.destination)
+
+
+class OneHotWrapper(gym.ObservationWrapper):
+    """One-hot encodes the observation."""
+
+    def __init__(self, env: gym.Env, redundant: bool = False):
+        super().__init__(env)
+        if not isinstance(self.observation_space, gym.spaces.MultiDiscrete):
+            raise TypeError
+
+        self.redundant = redundant
+
+        self._n_e = self.observation_space.nvec.flatten()
+        n_enc = sum(self._n_e)
+        if not redundant:
+            n_enc -= len(self._n_e)
+        self.observation_space = gym.spaces.MultiBinary(n_enc)
+
+    def observation(self, obs):
+        """Perform one-hot encoding on the observation."""
+        slices = []
+        for n, obs_i in zip(self._n_e, obs.flatten()):
+            s = np.zeros(n, dtype=self.observation_space.dtype)
+            s[obs_i] = 1
+            if not self.redundant:
+                s = s[1:]
+            slices.append(s)
+        return np.concatenate(slices)
+
+
 class RecurseObsWrapper(gym.ObservationWrapper, ABC):
     def __init__(self, env: gym.Env):
         super().__init__(env)
@@ -96,47 +187,6 @@ class RecurseMoveAxisWrapper(RecurseObsWrapper):
             return np.moveaxis(obs, self.source, self.destination)
 
         return space, fn
-
-
-class MoveAxisWrapper(gym.ObservationWrapper):
-    def __init__(self, env, source, destination):
-        super().__init__(env)
-        self.source, self.destination = source, destination
-
-        self.observation_space = space_utils.moveaxis(
-            self.observation_space, source, destination
-        )
-
-    def observation(self, obs):
-        return np.moveaxis(obs, self.source, self.destination)
-
-
-class OneHotWrapper(gym.ObservationWrapper):
-    """One-hot encodes the observation."""
-
-    def __init__(self, env: gym.Env, redundant: bool = False):
-        super().__init__(env)
-        if not isinstance(self.observation_space, gym.spaces.MultiDiscrete):
-            raise TypeError
-
-        self.redundant = redundant
-
-        self._n_e = self.observation_space.nvec.flatten()
-        n_enc = sum(self._n_e)
-        if not redundant:
-            n_enc -= len(self._n_e)
-        self.observation_space = gym.spaces.MultiBinary(n_enc)
-
-    def observation(self, obs):
-        """Perform one-hot encoding on the observation."""
-        slices = []
-        for n, obs_i in zip(self._n_e, obs.flatten()):
-            s = np.zeros(n, dtype=self.observation_space.dtype)
-            s[obs_i] = 1
-            if not self.redundant:
-                s = s[1:]
-            slices.append(s)
-        return np.concatenate(slices)
 
 
 class StepPenalty(gym.RewardWrapper):
