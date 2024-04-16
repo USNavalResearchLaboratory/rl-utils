@@ -76,7 +76,7 @@ post-install-commands = [
 
 [tool.ruff]
 src = ["src"]
-select = [
+lint.select = [
   "F",   # pyflakes
   "E",   # pycodestyle
   "W",   # pycodestyle
@@ -87,12 +87,12 @@ select = [
   "B",   # bugbear
   "UP",  # pyupgrade
 ]
-ignore = [
+lint.ignore = [
   "D1",   # missing docstrings
   "B905", # zip w/o explicit `strict=`
 ]
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.mypy]
