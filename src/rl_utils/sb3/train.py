@@ -728,7 +728,7 @@ if __name__ == "__main__":
             env_id = EnvSpec.from_json(f.read())
 
     kwargs: dict[str, Any] = dict(algo_kwargs={}, eval_callback_kwargs={})
-    hyperopt_cfg = None  # FIXME
+    hyperopt_cfg: dict | None = None  # FIXME
     if args.model_config is not None:
         with open(args.model_config) as f:
             _cfg = json.loads(f.read())
