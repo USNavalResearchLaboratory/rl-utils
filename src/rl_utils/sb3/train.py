@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -59,20 +59,27 @@ def _load_attr(entry_point: str) -> Any:
     if ":" not in entry_point:
         raise ValueError
     mod_name, attr_name = entry_point.split(":")
-    mod = importlib.import_module(mod_name)
+    if mod_name.endswith(".py"):
+        name = mod_name.removesuffix(".py").replace("/", ".")
+        spec = importlib.util.spec_from_file_location(name, mod_name)
+        mod = importlib.util.module_from_spec(spec)  # type: ignore
+        sys.modules["module.name"] = mod
+        spec.loader.exec_module(mod)  # type: ignore
+    else:
+        mod = importlib.import_module(mod_name)
     return getattr(mod, attr_name)
 
 
-def load_attributes(obj: Any):
+def _load_attributes(obj: Any):
     """Recursively load attributes from string specification.
 
     Note:
         See `_load_attr` for a description of the spec syntax.
     """
     if isinstance(obj, dict):
-        return {k: load_attributes(v) for k, v in obj.items()}
+        return {k: _load_attributes(v) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return list(map(load_attributes, obj))
+        return list(map(_load_attributes, obj))
     elif isinstance(obj, str):
         try:
             return _load_attr(obj)
@@ -88,7 +95,7 @@ def _make_from_spec(spec):
     Input `spec` is a constructor with an optional kwarg dictionary. If a the
     constructor is a `str`, it is loaded using `_load_attr`.
     """
-    if isinstance(spec, Sequence):
+    if isinstance(spec, tuple | list):
         entry_point, kwargs = spec
     else:
         entry_point, kwargs = spec, {}
@@ -732,7 +739,7 @@ if __name__ == "__main__":
     if args.model_config is not None:
         with open(args.model_config) as f:
             _cfg = json.loads(f.read())
-        model_cfg = load_attributes(_cfg)
+        model_cfg = _load_attributes(_cfg)
 
         algo = model_cfg.pop("algo")
         policy = model_cfg.pop("policy")
