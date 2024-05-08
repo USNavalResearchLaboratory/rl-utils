@@ -39,17 +39,19 @@ PathOrStr = str | os.PathLike
 def _load_attr(entry_point: str) -> Any:
     """Load module attribute from string specification.
 
-    Assumes `entry_point` is of the form "<module>:<attr>", where <module> can
-    be a subpackage (e.g. "foo.bar") and <attr> is the attribute to load "module".
+    Assumes `entry_point` is of the form "<module>:<attr>", where <module> is an
+    importable module or subpackage (e.g. "foo.bar") and <attr> is the attribute to
+    load from the module.
 
     Note:
-        Derived from `gymnasium.envs.registration.load_env_creator`.
+        Inspired by `gymnasium.envs.registration.load_env_creator`.
 
     Args:
         entry_point: The string specification "<module>:<attr>"
 
     Returns:
         The desired attribute, as if `from <module> import <attr>` had been executed.
+
     """
     # _prefix = "import::"
     # if entry_point.startswith(_prefix):
@@ -75,6 +77,7 @@ def _load_attributes(obj: Any):
 
     Note:
         See `_load_attr` for a description of the spec syntax.
+
     """
     if isinstance(obj, dict):
         return {k: _load_attributes(v) for k, v in obj.items()}
@@ -94,6 +97,7 @@ def _make_from_spec(spec):
 
     Input `spec` is a constructor with an optional kwarg dictionary. If a the
     constructor is a `str`, it is loaded using `_load_attr`.
+
     """
     if isinstance(spec, tuple | list):
         entry_point, kwargs = spec
@@ -152,14 +156,14 @@ def record_vid_vec(
     video_type: str = "mp4",
     seed: int | None = None,
 ) -> list[np.ndarray]:
-    """Save MP4 vid of agent rollouts.
+    """Save recording of agent rollouts.
 
     Args:
         model: Model object with a `predict` method.
         env: Environment object.
         deterministic: Whether to use deterministic or stochastic actions.
         video_folder: The folder where the recordings will be stored.
-        video_length: The number of recording steps.
+        video_length: The number of recorded steps.
         video_type: Either "mp4" or "gif"
         seed: The initial seed for the random number generator.
 
@@ -206,14 +210,14 @@ def record_vid(
     video_type: str = "mp4",
     seed: int | None = None,
 ) -> list[np.ndarray]:
-    """Save MP4 vid of agent rollouts.
+    """Save recording of agent rollouts.
 
     Args:
         model: Model object with a `predict` method.
         env: Environment object.
         deterministic: Whether to use deterministic or stochastic actions.
         video_folder: The folder where the recordings will be stored.
-        video_length: The number of recording steps.
+        video_length: The number of recorded steps.
         video_type: Either "mp4" or "gif"
         seed: The initial seed for the random number generator.
 
@@ -323,6 +327,7 @@ def _make_model(
 
     Returns:
         SB3 model with parameters/logger/etc. set.
+
     """
     if isinstance(algo, str):
         algo_cls = getattr(stable_baselines3, algo)

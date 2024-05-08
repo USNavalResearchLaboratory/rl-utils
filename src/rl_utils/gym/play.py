@@ -7,7 +7,7 @@ import pygame
 from gymnasium.envs.registration import EnvSpec
 
 
-def display_arr(
+def _display_arr(
     screen: pygame.Surface,
     arr: np.ndarray,
     video_size: tuple[int, int],
@@ -16,6 +16,7 @@ def display_arr(
     """Display rendered image.
 
     Minor modification of `gymnasium.utils.play.display_arr`
+
     """
     arr = np.moveaxis(arr, 1, 0)
 
@@ -33,16 +34,16 @@ def display_arr(
     screen.blit(surface, (width_offset, height_offset))
 
 
-def play(  # noqa: C901
-    env_id: str | EnvSpec,
-    key_to_action: dict[str, Any],
-    env_kwargs: dict[str, Any] | None = None,
-):
-    if env_kwargs is None:
-        env_kwargs = {}
-    env_kwargs["render_mode"] = "rgb_array"
-    env = gym.make(env_id, **env_kwargs)
+def play(env: gym.Env, key_to_action: dict[str, Any]):  # noqa: C901
+    """Play a gym environment.
 
+    Args:
+        env: The environment.
+        key_to_action: Mapping of keys to actions.
+
+    """
+    if env.render_mode != "rgb_array":
+        raise ValueError("Render mode must be 'rgb_array'.")
     if not isinstance(env.action_space, gym.spaces.Discrete):
         raise TypeError("Action space must be `Discrete`")
 
@@ -102,7 +103,7 @@ def play(  # noqa: C901
                 window_size = (scale * window_size[0], scale * window_size[1])
 
             render_img = cast(np.ndarray, env.render())
-            display_arr(screen, render_img, video_size=window_size)
+            _display_arr(screen, render_img, video_size=window_size)
 
             pygame.display.flip()
 
@@ -111,17 +112,22 @@ def play(  # noqa: C901
 
 
 def play_live(  # noqa: C901
-    env_id: str | EnvSpec,
+    env: gym.Env,
     key_to_action: dict[str, Any],
-    env_kwargs: dict[str, Any] | None = None,
     fps: float | None = None,
     noop: str | None = None,
 ):
-    if env_kwargs is None:
-        env_kwargs = {}
-    env_kwargs["render_mode"] = "rgb_array"
-    env = gym.make(env_id, **env_kwargs)
+    """Play a gym environment in real-time.
 
+    Args:
+        env: The environment.
+        key_to_action: Mapping of keys to actions.
+        fps: Rendered frames per second. Defaults to `env.render_fps` or 1.0 otherwise.
+        noop: The default key when no keyboard operation is recorded.
+
+    """
+    if env.render_mode != "rgb_array":
+        raise ValueError("Render mode must be 'rgb_array'.")
     if not isinstance(env.action_space, gym.spaces.Discrete):
         raise TypeError("Action space must be `Discrete`")
 
@@ -188,7 +194,7 @@ def play_live(  # noqa: C901
                 print("Episode truncated.\n")
 
         render_img = cast(np.ndarray, env.render())
-        display_arr(screen, render_img, video_size=window_size)
+        _display_arr(screen, render_img, video_size=window_size)
 
         pygame.display.flip()
         clock.tick(fps)
@@ -224,7 +230,9 @@ if __name__ == "__main__":
     if args.keys is not None:
         key_to_action = dict(zip(args.keys, range(len(args.keys))))
 
+    env = gym.make(env_id, render_mode="rgb_array")
+
     if args.continuous:
-        play_live(env_id, key_to_action, fps=args.fps, noop=args.noop)
+        play_live(env, key_to_action, fps=args.fps, noop=args.noop)
     else:
-        play(env_id, key_to_action)
+        play(env, key_to_action)
