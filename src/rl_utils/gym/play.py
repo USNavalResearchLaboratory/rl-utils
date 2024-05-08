@@ -1,10 +1,28 @@
 import argparse
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, cast
 
 import gymnasium as gym
+import imageio
 import numpy as np
 import pygame
 from gymnasium.envs.registration import EnvSpec
+
+# TODO: Return trajectories for imitation learning, etc.
+
+
+def _make_recording(filepath: str | Path, images: Sequence[np.ndarray], **kwargs):
+    """Make recording from sequence of images.
+
+    Args:
+        filepath: Save path.
+        images: Sequence of images.
+        kwargs: Keyword arguments for `imageio.save`
+    """
+    writer = imageio.save(filepath, **kwargs)
+    for image in images:
+        writer.append_data(image)
 
 
 def _display_arr(
@@ -34,12 +52,15 @@ def _display_arr(
     screen.blit(surface, (width_offset, height_offset))
 
 
-def play(env: gym.Env, key_to_action: dict[str, Any]):  # noqa: C901
+def play(env: gym.Env, key_to_action: dict[str, Any]) -> list[np.ndarray]:  # noqa: C901
     """Play a gym environment.
 
     Args:
         env: The environment.
         key_to_action: Mapping of keys to actions.
+
+    Returns:
+        List of rendered env images.
 
     """
     if env.render_mode != "rgb_array":
@@ -53,6 +74,7 @@ def play(env: gym.Env, key_to_action: dict[str, Any]):  # noqa: C901
     print(f"Obs: \n{obs}")
 
     render_img = cast(np.ndarray, env.render())
+    render_images = [render_img]
     window_size = cast(tuple[int, int], render_img.shape[:2])
 
     pygame.init()
@@ -93,6 +115,9 @@ def play(env: gym.Env, key_to_action: dict[str, Any]):  # noqa: C901
                     elif truncated:
                         print("Episode truncated.\n")
 
+                render_img = cast(np.ndarray, env.render())
+                render_images.append(render_img)
+
             elif event.type == pygame.QUIT:
                 running = False
 
@@ -102,7 +127,6 @@ def play(env: gym.Env, key_to_action: dict[str, Any]):  # noqa: C901
                 scale = min(scale_height, scale_width)
                 window_size = (scale * window_size[0], scale * window_size[1])
 
-            render_img = cast(np.ndarray, env.render())
             _display_arr(screen, render_img, video_size=window_size)
 
             pygame.display.flip()
@@ -110,13 +134,15 @@ def play(env: gym.Env, key_to_action: dict[str, Any]):  # noqa: C901
     env.close()
     pygame.quit()
 
+    return render_images
+
 
 def play_live(  # noqa: C901
     env: gym.Env,
     key_to_action: dict[str, Any],
     fps: float | None = None,
     noop: str | None = None,
-):
+) -> list[np.ndarray]:
     """Play a gym environment in real-time.
 
     Args:
@@ -124,6 +150,9 @@ def play_live(  # noqa: C901
         key_to_action: Mapping of keys to actions.
         fps: Rendered frames per second. Defaults to `env.render_fps` or 1.0 otherwise.
         noop: The default key when no keyboard operation is recorded.
+
+    Returns:
+        List of rendered env images.
 
     """
     if env.render_mode != "rgb_array":
@@ -137,6 +166,7 @@ def play_live(  # noqa: C901
     print(f"Obs: \n{obs}")
 
     render_img = cast(np.ndarray, env.render())
+    render_images = [render_img]
     window_size = cast(tuple[int, int], render_img.shape[:2])
 
     pygame.init()
@@ -194,6 +224,7 @@ def play_live(  # noqa: C901
                 print("Episode truncated.\n")
 
         render_img = cast(np.ndarray, env.render())
+        render_images.append(render_img)
         _display_arr(screen, render_img, video_size=window_size)
 
         pygame.display.flip()
@@ -201,6 +232,8 @@ def play_live(  # noqa: C901
 
     env.close()
     pygame.quit()
+
+    return render_images
 
 
 if __name__ == "__main__":
@@ -216,6 +249,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--fps", type=float, help="Frames per second")
     parser.add_argument("--noop", help="NOOP key w/o keyboard input")
+    parser.add_argument("--render_file", help="File path for ImageIO recording.")
 
     args = parser.parse_args()
 
@@ -233,6 +267,12 @@ if __name__ == "__main__":
     env = gym.make(env_id, render_mode="rgb_array")
 
     if args.continuous:
-        play_live(env, key_to_action, fps=args.fps, noop=args.noop)
+        images = play_live(env, key_to_action, fps=args.fps, noop=args.noop)
     else:
-        play(env, key_to_action)
+        images = play(env, key_to_action)
+
+    if args.render_file is not None:
+        fps = args.fps
+        if fps is None:
+            fps = env.metadata.get("render_fps", 1.0)
+        _make_recording(args.render_file, images, fps=fps)

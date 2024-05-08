@@ -16,7 +16,6 @@ dependencies = [
   "optuna",
   "pandas",
   "PyYAML",
-  "moviepy",
 ]
 description = "A collection of utilities for reinforcement learning"
 name = "RL-utils"
@@ -99,7 +98,7 @@ convention = "google"
 plugins = "numpy.typing.mypy_plugin"
 
 [[tool.mypy.overrides]]
-module = ["rl_utils.*", "moviepy.*"]
+module = ["rl_utils.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

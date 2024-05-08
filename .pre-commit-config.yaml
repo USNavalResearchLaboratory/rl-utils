@@ -30,7 +30,6 @@ repos:
           - "optuna"
           - "pandas"
           - "PyYAML"
-          - "moviepy"
           - "types-PyYAML"
           - "types-PyMySQL"
           - "types-tqdm"

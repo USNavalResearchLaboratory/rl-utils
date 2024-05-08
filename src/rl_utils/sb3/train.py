@@ -8,16 +8,16 @@ from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import gymnasium as gym
+import imageio
 import numpy as np
 import optuna
 import pandas as pd
 import stable_baselines3
 import yaml
 from gymnasium.envs.registration import EnvSpec
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -151,110 +151,91 @@ def record_vid_vec(
     model: BaseAlgorithm,
     env: GymEnv,
     video_length: int,
+    video_path: Path | str,
     deterministic: bool = True,
-    video_folder: PathOrStr = ".",
-    video_type: str = "mp4",
     seed: int | None = None,
-) -> list[np.ndarray]:
+):
     """Save recording of agent rollouts.
 
     Args:
         model: Model object with a `predict` method.
         env: Environment object.
-        deterministic: Whether to use deterministic or stochastic actions.
-        video_folder: The folder where the recordings will be stored.
         video_length: The number of recorded steps.
-        video_type: Either "mp4" or "gif"
+        video_path: The recording filepath.
+        deterministic: Whether to use deterministic or stochastic actions.
         seed: The initial seed for the random number generator.
 
-    Returns:
-        List of rendered RGB arrays.
-
     """
+    if env.render_mode != "rgb_array":
+        raise ValueError("Render mode must be 'rgb_array'.")
+
     if not isinstance(env, VecEnv):
         env = DummyVecEnv([lambda: env])  # type: ignore[list-item, return-value]
     env.seed(seed)
 
-    frames: list = []
+    fps = env.metadata.get("render_fps", 1.0)
+    writer = imageio.save(video_path, fps=fps)
+
     obs = env.reset()
-    frames.append(env.render())
-    while len(frames) < video_length:
+    render_img = cast(np.ndarray, env.render())
+    writer.append_data(render_img)
+    for _ in range(video_length - 2):
         action, _state = model.predict(obs, deterministic=deterministic)  # type: ignore
         obs, _reward, _dones, _info = env.step(action)
-        frames.append(env.render())
+        render_img = cast(np.ndarray, env.render())
+        writer.append_data(render_img)
     env.close()
-
-    clip = ImageSequenceClip(frames, fps=env.metadata["render_fps"])
-    if video_type == "mp4":
-        clip.write_videofile(str(Path(video_folder) / "render.mp4"))
-    elif video_type == "gif":
-        clip.write_gif(str(Path(video_folder) / "render.gif"))
-    else:
-        raise ValueError(f"Video type '{video_type}' not supported.")
-
-    # model.logger.record(
-    #     "render/eps",
-    #     Video(th.ByteTensor(np.stack(frames)), fps=env.metadata["render_fps"]),
-    #     exclude=("stdout", "log", "json", "csv"),
-    # )
-
-    return frames
 
 
 def record_vid(
     model: BaseAlgorithm,
     env: gym.Env,
     video_length: int,
+    video_path: Path | str,
     deterministic: bool = True,
-    video_folder: PathOrStr = ".",
-    video_type: str = "mp4",
     seed: int | None = None,
-) -> list[np.ndarray]:
+):
     """Save recording of agent rollouts.
 
     Args:
         model: Model object with a `predict` method.
         env: Environment object.
-        deterministic: Whether to use deterministic or stochastic actions.
-        video_folder: The folder where the recordings will be stored.
         video_length: The number of recorded steps.
-        video_type: Either "mp4" or "gif"
+        video_path: The recording filepath.
+        deterministic: Whether to use deterministic or stochastic actions.
         seed: The initial seed for the random number generator.
 
-    Returns:
-        List of rendered RGB arrays.
-
     """
+    if env.render_mode != "rgb_array":
+        raise ValueError("Render mode must be 'rgb_array'.")
+
     env.np_random = np.random.default_rng(seed)
 
-    frames: list = []
-    while len(frames) < video_length:
+    fps = env.metadata.get("render_fps", 1.0)
+    writer = imageio.save(video_path, fps=fps)
+
+    i = 0
+    while i < video_length:
         obs, _info = env.reset()
-        frames.append(env.render())
         terminated, truncated = False, False
+        render_img = cast(np.ndarray, env.render())
+        writer.append_data(render_img)
+        i += 1
         while not (terminated or truncated):
-            if len(frames) == video_length:
+            if i == video_length:
                 break
             action, _state = model.predict(obs, deterministic=deterministic)
             obs, _reward, terminated, truncated, _info = env.step(action)
-            frames.append(env.render())
+            render_img = cast(np.ndarray, env.render())
+            writer.append_data(render_img)
+            i += 1
     env.close()
-
-    clip = ImageSequenceClip(frames, fps=env.metadata["render_fps"])
-    if video_type == "mp4":
-        clip.write_videofile(str(Path(video_folder) / "render.mp4"))
-    elif video_type == "gif":
-        clip.write_gif(str(Path(video_folder) / "render.gif"))
-    else:
-        raise ValueError(f"Video type '{video_type}' not supported.")
 
     # model.logger.record(
     #     "render/eps",
     #     Video(th.ByteTensor(np.stack(frames)), fps=env.metadata["render_fps"]),
     #     exclude=("stdout", "log", "json", "csv"),
     # )
-
-    return frames
 
 
 def _update_algo_kwargs(
@@ -503,12 +484,10 @@ def train(
         _kwargs = env_kwargs.copy() if env_kwargs is not None else {}
         _kwargs["render_mode"] = "rgb_array"
         render_env = gym.make(env_id, max_episode_steps, **_kwargs)
+        video_path = log_path / "render.mp4"
         record_vid(
-            model, render_env, video_length, deterministic, str(log_path), seed=seed
+            model, render_env, video_length, video_path, deterministic, seed=seed
         )
-        # record_vid_vec(
-        #     model, eval_env, video_length, deterministic, str(log_path), seed=seed
-        # )
 
     return mean_reward
 
