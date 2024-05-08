@@ -20,6 +20,8 @@ def _make_recording(filepath: str | Path, images: Sequence[np.ndarray], **kwargs
         images: Sequence of images.
         kwargs: Keyword arguments for `imageio.save`
     """
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
     writer = imageio.save(filepath, **kwargs)
     for image in images:
         writer.append_data(image)
