@@ -75,7 +75,7 @@ def play(env: gym.Env, key_to_action: dict[str, Any]) -> list[np.ndarray]:  # no
 
     render_img = cast(np.ndarray, env.render())
     render_images = [render_img]
-    window_size = cast(tuple[int, int], render_img.shape[:2])
+    window_size = cast(tuple[int, int], render_img.shape[1::-1])
 
     pygame.init()
     pygame.display.init()
@@ -167,7 +167,7 @@ def play_live(  # noqa: C901
 
     render_img = cast(np.ndarray, env.render())
     render_images = [render_img]
-    window_size = cast(tuple[int, int], render_img.shape[:2])
+    window_size = cast(tuple[int, int], render_img.shape[1::-1])
 
     pygame.init()
     pygame.display.init()
