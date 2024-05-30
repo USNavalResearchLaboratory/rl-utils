@@ -402,6 +402,8 @@ def train(
     algo: str | BaseAlgorithm,
     policy: str | BasePolicy,
     env_kwargs: dict[str, Any] | None = None,
+    eval_env_id: str | EnvSpec | None = None,
+    eval_env_kwargs: dict[str, Any] | None = None,
     max_episode_steps: int | None = None,
     algo_kwargs: dict[str, Any] | None = None,
     params_path: PathOrStr | None = None,
@@ -419,11 +421,17 @@ def train(
     """Train and evaluate an agent.
 
     Args:
-        env_id: Name of the environment. Optionally, a module to import can be included,
-            eg. 'module:Env-v0'
+        env_id: A string for the environment id or a `EnvSpec`. Optionally if
+            using a string, a module to import can be included, e.g. 'module:Env-v0'.
+            This is equivalent to importing the module first to register the environment
+            followed by making the environment.
         algo: Stable-Baselines3 algorithm.
         policy: Stable-Baselines3 policy.
         env_kwargs: Additional arguments to pass to the environment constructor.
+        eval_env_id: Specification for the evaluation environment. If `None`, `env_id`
+            is used.
+        eval_env_kwargs: Additional arguments for the evaluation environment
+            constructor. If `None` and `eval_env_id is None`, `env_kwargs` is used.
         max_episode_steps: Maximum length of an episode (TimeLimit wrapper).
         algo_kwargs: Additional arguments to pass to the algorithm constructor.
         params_path: Path to saved initial model parameters.
@@ -448,8 +456,12 @@ def train(
         callback_list = list(map(_make_from_spec, callbacks))
 
     env = _make_vec_env(env_id, env_kwargs, max_episode_steps, n_envs, multiproc)
+    if eval_env_id is None:
+        eval_env_id = env_id
+        if eval_env_kwargs is None:
+            eval_env_kwargs = env_kwargs
     eval_env = _make_vec_env(
-        env_id, env_kwargs, max_episode_steps, n_envs, multiproc, seed
+        eval_env_id, eval_env_kwargs, max_episode_steps, n_envs, multiproc, seed
     )
 
     model = _make_model(
@@ -492,7 +504,7 @@ def train(
     return mean_reward
 
 
-def hyperopt(
+def hyperopt(  # noqa: C901
     env_id: str | EnvSpec,
     algo: str | BaseAlgorithm,
     policy: str | BasePolicy,
@@ -500,6 +512,8 @@ def hyperopt(
     study_kwargs: dict[str, Any] | None = None,
     optimize_kwargs: dict[str, Any] | None = None,
     env_kwargs: dict[str, Any] | None = None,
+    eval_env_id: str | EnvSpec | None = None,
+    eval_env_kwargs: dict[str, Any] | None = None,
     max_episode_steps: int | None = None,
     algo_kwargs: dict[str, Any] | None = None,
     params_path: PathOrStr | None = None,
@@ -517,14 +531,20 @@ def hyperopt(
     """Optimize hyperparameters, train, and evaluate an agent.
 
     Args:
-        env_id: Name of the environment. Optionally, a module to import can be included,
-            eg. 'module:Env-v0'
+        env_id: A string for the environment id or a `EnvSpec`. Optionally if
+            using a string, a module to import can be included, e.g. 'module:Env-v0'.
+            This is equivalent to importing the module first to register the environment
+            followed by making the environment.
         algo: Stable-Baselines3 algorithm class.
         policy : Stable-Baselines3 policy class.
         get_trial_params: Function of `trial`, returns `dict` of algorithm kwargs.
         study_kwargs: Additional arguments to pass to `create_study`.
         optimize_kwargs: Additional arguments to pass to `study.optimize`.
         env_kwargs: Additional arguments to pass to the environment constructor.
+        eval_env_id: Specification for the evaluation environment. If `None`, `env_id`
+            is used.
+        eval_env_kwargs: Additional arguments for the evaluation environment
+            constructor. If `None` and `eval_env_id is None`, `env_kwargs` is used.
         max_episode_steps: Maximum length of an episode (TimeLimit wrapper).
         algo_kwargs: Additional arguments to pass to the algorithm constructor.
         params_path: Path to saved initial model parameters.
@@ -550,6 +570,11 @@ def hyperopt(
     else:
         callback_list = list(map(_make_from_spec, callbacks))
 
+    if eval_env_id is None:
+        eval_env_id = env_id
+        if eval_env_kwargs is None:
+            eval_env_kwargs = env_kwargs
+
     def objective(trial):
         trial_path = log_path / f"T{trial.number}/"
         trial_path.mkdir(parents=True, exist_ok=True)
@@ -559,7 +584,7 @@ def hyperopt(
 
         env = _make_vec_env(env_id, env_kwargs, max_episode_steps, n_envs, multiproc)
         eval_env = _make_vec_env(
-            env_id, env_kwargs, max_episode_steps, n_envs, multiproc, seed
+            eval_env_id, eval_env_kwargs, max_episode_steps, n_envs, multiproc, seed
         )
 
         model = _make_model(
@@ -664,9 +689,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train an agent.")
 
     # Core arguments
-    parser.add_argument("--env-config", help="Path to env config file.")
+    parser.add_argument("--env-config", help="Path to train env config file.")
+    parser.add_argument("--eval-env-config", help="Path to eval env config file.")
     parser.add_argument("--model-config", help="Path to model config file.")
-    parser.add_argument("--env", help="Environment ID.")
+    parser.add_argument("--env", help="Environment ID for training.")
+    parser.add_argument("--eval-env", help="Environment ID for evaluation.")
     parser.add_argument("--algo", help="Algorithm class.")
     parser.add_argument("--policy", help="Policy class.")
 
@@ -713,12 +740,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Load config
+    # Load configs
+    kwargs: dict[str, Any] = dict(algo_kwargs={}, eval_callback_kwargs={})
+
     if args.env_config is not None:
         with open(args.env_config) as f:
             env_id = EnvSpec.from_json(f.read())
+    if args.eval_env_config is not None:
+        with open(args.eval_env_config) as f:
+            kwargs["eval_env_id"] = EnvSpec.from_json(f.read())
 
-    kwargs: dict[str, Any] = dict(algo_kwargs={}, eval_callback_kwargs={})
     hyperopt_cfg: dict | None = None  # FIXME
     if args.model_config is not None:
         with open(args.model_config) as f:
@@ -737,6 +768,8 @@ if __name__ == "__main__":
     if args.policy is not None:
         policy = args.policy
 
+    if args.eval_env is not None:
+        kwargs["eval_env_id"] = args.eval_env
     if args.max_ep_steps is not None:
         kwargs["max_episode_steps"] = args.max_ep_steps
     if args.lr is not None:
