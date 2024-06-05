@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Sequence
+from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from operator import itemgetter
@@ -53,6 +54,7 @@ class ItemTransform(SpaceTransform):
         space = space.__class__(_spaces)
 
         def fn(x):
+            x = copy(x)
             x[self.key] = sub_fn(x[self.key])
             return x
 
