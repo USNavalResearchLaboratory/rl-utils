@@ -149,8 +149,32 @@ def unnest() -> T_tx_io[spaces.Space, spaces.Tuple]:  # TODO
     return tx
 
 
+def stack(
+    axis: int | Sequence[int] | None,
+) -> T_tx_io[spaces.Tuple | spaces.Dict, spaces.Tuple]:
+    def tx(space):
+        if isinstance(space, spaces.Dict):
+            _spaces = tuple(space.spaces.values())
+        elif isinstance(space, spaces.Tuple):
+            _spaces = space.spaces
+        else:
+            raise TypeError
+        space = space_utils.stack(_spaces, axis=axis)
+
+        def fn(x):
+            if isinstance(x, dict):
+                _arrs = tuple(x.values())
+            else:
+                _arrs = x
+            return np.stack(_arrs, axis)
+
+        return space, fn
+
+    return tx
+
+
 def concat(
-    axis: int | Sequence[int],
+    axis: int | Sequence[int] | None,
 ) -> T_tx_io[spaces.Tuple | spaces.Dict, spaces.Tuple]:
     def tx(space):
         if isinstance(space, spaces.Dict):

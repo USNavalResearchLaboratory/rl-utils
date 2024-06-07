@@ -122,7 +122,7 @@ def _get_space_lims(space):
         raise NotImplementedError
 
 
-def stack(spaces, axis=0):
+def stack(spaces, axis=None):
     """Join a sequence of spaces along a new axis.
 
     'Upcasts' to superset space when required.
@@ -146,11 +146,8 @@ def stack(spaces, axis=0):
         return Box(low, high, dtype=float)
 
 
-def concatenate(spaces, axis=0):  # FIXME
-    """Join a sequence of spaces along an existing axis.
-
-    'Upcasts' to superset space when required.
-    """
+def concatenate(spaces, axis=None):
+    """Join a sequence of spaces along an existing axis."""
     if len(spaces) == 1:
         return spaces[0]
 
