@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from collections.abc import Callable, Hashable, Sequence
+from collections.abc import Callable, Sequence
 from copy import copy
 from dataclasses import dataclass
 from functools import partial
@@ -19,7 +19,9 @@ from rl_utils.gym import space_utils
 
 class SpaceTransform(ABC):
     @abstractmethod
-    def __call__(self, space: spaces.Space) -> tuple[spaces.Space, Callable]: ...
+    def __call__(self, space): ...
+
+    # def __call__(self, space: spaces.Space) -> tuple[spaces.Space, Callable]: ...
 
 
 @dataclass(init=False)
@@ -46,7 +48,7 @@ class ChainedTransform(SpaceTransform):
 @dataclass
 class ItemTransform(SpaceTransform):
     transform: SpaceTransform
-    key: int | Hashable
+    key: int | str
 
     def __call__(self, space: spaces.Tuple | spaces.Dict):
         _spaces = space.spaces
@@ -99,9 +101,9 @@ class RecursiveTransform(SpaceTransform):
 #
 @dataclass
 class GetItem(SpaceTransform):
-    key: int | Hashable
+    key: int | str
 
-    def __call__(self, space):
+    def __call__(self, space: spaces.Tuple | spaces.Dict):
         space = space[self.key]
         fn = itemgetter(self.key)
         return space, fn
