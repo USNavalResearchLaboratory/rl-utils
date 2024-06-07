@@ -17,7 +17,7 @@ import optuna
 import pandas as pd
 import stable_baselines3
 import yaml
-from gymnasium.envs.registration import EnvSpec
+from gymnasium.envs.registration import EnvSpec, WrapperSpec
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -72,17 +72,18 @@ def _load_attr(entry_point: str) -> Any:
     return getattr(mod, attr_name)
 
 
-def _load_attributes(obj: Any):
-    """Recursively load attributes from string specification.
-
-    Note:
-        See `_load_attr` for a description of the spec syntax.
-
-    """
+def _load_and_construct(obj):
     if isinstance(obj, dict):
-        return {k: _load_attributes(v) for k, v in obj.items()}
+        obj = {k: _load_and_construct(v) for k, v in obj.items()}
+
+        if set(["entry_point"]) <= set(obj.keys()):  # construct object
+            entry_point = obj["entry_point"]
+            args, kwargs = obj.get("args", ()), obj.get("kwargs", {})
+            obj = entry_point(*args, **kwargs)
+
+        return obj
     elif isinstance(obj, list):
-        return list(map(_load_attributes, obj))
+        return list(map(_load_and_construct, obj))
     elif isinstance(obj, str):
         try:
             return _load_attr(obj)
@@ -92,20 +93,13 @@ def _load_attributes(obj: Any):
         return obj
 
 
-def _make_from_spec(spec):
-    """Instantiate object from constructor/args specification.
+def _make_env_spec(cfg: dict):
+    def _fn(w):
+        w["kwargs"] = _load_and_construct(w.pop("kwargs"))
+        return WrapperSpec(**w)
 
-    Input `spec` is a constructor with an optional kwarg dictionary. If a the
-    constructor is a `str`, it is loaded using `_load_attr`.
-
-    """
-    if isinstance(spec, tuple | list):
-        entry_point, kwargs = spec
-    else:
-        entry_point, kwargs = spec, {}
-    if isinstance(entry_point, str):
-        entry_point = _load_attr(entry_point)
-    return entry_point(**kwargs)
+    cfg["additional_wrappers"] = tuple(map(_fn, cfg["additional_wrappers"]))
+    return EnvSpec(**cfg)
 
 
 def get_now():
@@ -369,10 +363,6 @@ def _update_eval_callback_kwargs(
         eval_freq_total = eval_callback_kwargs.pop("eval_freq_total")
         eval_callback_kwargs["eval_freq"] = max(eval_freq_total // n_envs, 1)
 
-    for k in ("callback_on_new_best", "callback_after_eval"):
-        if k in eval_callback_kwargs:
-            eval_callback_kwargs[k] = _make_from_spec(eval_callback_kwargs.pop(k))
-
     if "callback_on_new_best" in eval_callback_kwargs:
         eval_callback_kwargs["callback_on_new_best"].verbose = verbose
     if "callback_after_eval" in eval_callback_kwargs:
@@ -408,7 +398,7 @@ def train(
     algo_kwargs: dict[str, Any] | None = None,
     params_path: PathOrStr | None = None,
     total_timesteps: int = 0,
-    callbacks: list[BaseCallback | list] | None = None,
+    callbacks: list[BaseCallback] | None = None,
     eval_callback_kwargs: dict[str, Any] | None = None,
     deterministic: bool = True,
     n_envs: int = 1,
@@ -453,7 +443,7 @@ def train(
     if callbacks is None:
         callback_list = []
     else:
-        callback_list = list(map(_make_from_spec, callbacks))
+        callback_list = list(callbacks)
 
     env = _make_vec_env(env_id, env_kwargs, max_episode_steps, n_envs, multiproc)
     if eval_env_id is None:
@@ -518,7 +508,7 @@ def hyperopt(  # noqa: C901
     algo_kwargs: dict[str, Any] | None = None,
     params_path: PathOrStr | None = None,
     total_timesteps: int = 0,
-    callbacks: list[BaseCallback | list] | None = None,
+    callbacks: list[BaseCallback] | None = None,
     eval_callback_kwargs: dict[str, Any] | None = None,
     deterministic: bool = True,
     n_envs: int = 1,
@@ -568,7 +558,7 @@ def hyperopt(  # noqa: C901
     if callbacks is None:
         callback_list = []
     else:
-        callback_list = list(map(_make_from_spec, callbacks))
+        callback_list = list(callbacks)
 
     if eval_env_id is None:
         eval_env_id = env_id
@@ -745,16 +735,18 @@ if __name__ == "__main__":
 
     if args.env_config is not None:
         with open(args.env_config) as f:
-            env_id = EnvSpec.from_json(f.read())
+            _cfg = json.loads(f.read())
+        env_id = _make_env_spec(_cfg)
     if args.eval_env_config is not None:
         with open(args.eval_env_config) as f:
-            kwargs["eval_env_id"] = EnvSpec.from_json(f.read())
+            _cfg = json.loads(f.read())
+        kwargs["eval_env_id"] = _make_env_spec(_cfg)
 
     hyperopt_cfg: dict | None = None  # FIXME
     if args.model_config is not None:
         with open(args.model_config) as f:
             _cfg = json.loads(f.read())
-        model_cfg = _load_attributes(_cfg)
+        model_cfg = _load_and_construct(_cfg)
 
         algo = model_cfg.pop("algo")
         policy = model_cfg.pop("policy")

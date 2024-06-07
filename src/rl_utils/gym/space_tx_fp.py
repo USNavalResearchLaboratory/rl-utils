@@ -11,9 +11,11 @@ from gymnasium import spaces
 
 from rl_utils.gym import space_utils
 
-# TODO: deprecate recurse wrappers?
+# TODO: deprecate recurse wrappers
 # TODO: stack tx
 # TODO: docs
+
+# TODO: apply condition for `recursive_tx`!?
 
 
 T_si = TypeVar("T_si")
@@ -73,7 +75,7 @@ def item_apply(transform, key: int | str) -> T_tx:
     return tx
 
 
-def recursive_tx(transform: T_tx_i[spaces.Tuple | spaces.Dict]):
+def recursive_apply(transform) -> T_tx_i[spaces.Tuple | spaces.Dict]:
     def tx(space):
         def _build(space):
             if isinstance(space, spaces.Tuple):
@@ -125,23 +127,26 @@ def getitem(key: int | str) -> T_tx:
     return tx
 
 
-def unnest(space: spaces.Space) -> tuple[spaces.Tuple, Callable]:
-    space_out = space_utils.unnest(space)
+def unnest() -> T_tx_io[spaces.Space, spaces.Tuple]:  # TODO
+    def tx(space: spaces.Space):
+        space = space_utils.unnest(space)
 
-    def fn(x):
-        def unnest(x):
-            if isinstance(x, tuple):
-                for x_i in x:
-                    yield from unnest(x_i)
-            elif isinstance(x, dict):
-                for x_i in x.values():
-                    yield from unnest(x_i)
-            else:
-                yield x
+        def fn(x):
+            def unnest(x):
+                if isinstance(x, tuple):
+                    for x_i in x:
+                        yield from unnest(x_i)
+                elif isinstance(x, dict):
+                    for x_i in x.values():
+                        yield from unnest(x_i)
+                else:
+                    yield x
 
-        return tuple(unnest(x))
+            return tuple(unnest(x))
 
-    return space_out, fn
+        return space, fn
+
+    return tx
 
 
 def concat(
@@ -250,12 +255,10 @@ def one_hot_grid(  # noqa: C901
 
 #
 class ObservationWrapper(gym.ObservationWrapper):
-    # FIXME: move to separate module?
-    # TODO: *args and chain?
+    # FIXME: move to separate module
 
     def __init__(self, env: gym.Env, transform):
         super().__init__(env)
-        self._transform = transform
         self.observation_space, self._fn = transform(self.observation_space)
 
     def observation(self, observation):
