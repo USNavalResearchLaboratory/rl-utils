@@ -76,7 +76,7 @@ def _load_and_construct(obj):
     if isinstance(obj, dict):
         obj = {k: _load_and_construct(v) for k, v in obj.items()}
 
-        if set(["entry_point"]) <= set(obj.keys()):  # construct object
+        if "entry_point" in obj.keys():  # construct object
             entry_point = obj["entry_point"]
             args, kwargs = obj.get("args", ()), obj.get("kwargs", {})
             obj = entry_point(*args, **kwargs)

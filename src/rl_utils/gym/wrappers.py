@@ -4,7 +4,7 @@ from collections import OrderedDict
 import gymnasium as gym
 import numpy as np
 
-from rl_utils.gym import space_utils
+from rl_utils.gym.spaces import utils as space_utils
 
 
 class ResetOptionsWrapper(gym.Wrapper):

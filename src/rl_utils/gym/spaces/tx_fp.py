@@ -9,7 +9,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from rl_utils.gym import space_utils
+from rl_utils.gym.spaces import utils as space_utils
 
 # TODO: deprecate recurse wrappers
 # TODO: stack tx
