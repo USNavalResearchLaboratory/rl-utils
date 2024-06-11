@@ -1,11 +1,8 @@
 import argparse
 import importlib
 import json
-import os
 import pickle
-import sys
 from collections.abc import Callable
-from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, cast
@@ -17,7 +14,7 @@ import optuna
 import pandas as pd
 import stable_baselines3
 import yaml
-from gymnasium.envs.registration import EnvSpec, WrapperSpec
+from gymnasium.envs.registration import EnvSpec
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -28,86 +25,8 @@ from stable_baselines3.common.type_aliases import GymEnv
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv
 from torch import nn
 
+from rl_utils.gym.utils import PathOrStr, _load_and_construct, _make_env_spec, get_now
 from rl_utils.sb3.callbacks import TrialEvalCallback
-
-# TODO: better separate model cfg, algo vs learning
-# TODO: rework CLI parsing w/ defaults and `Namespace`?
-
-PathOrStr = str | os.PathLike
-
-
-def _load_attr(entry_point: str) -> Any:
-    """Load module attribute from string specification.
-
-    Assumes `entry_point` is of the form "<module>:<attr>", where <module> is an
-    importable module or subpackage (e.g. "foo.bar") and <attr> is the attribute to
-    load from the module.
-
-    Note:
-        Inspired by `gymnasium.envs.registration.load_env_creator`.
-
-    Args:
-        entry_point: The string specification "<module>:<attr>"
-
-    Returns:
-        The desired attribute, as if `from <module> import <attr>` had been executed.
-
-    """
-    # _prefix = "import::"
-    # if entry_point.startswith(_prefix):
-    #     entry_point = entry_point.removeprefix(_prefix)
-    # else:
-    #     raise ValueError
-    if ":" not in entry_point:
-        raise ValueError
-    mod_name, attr_name = entry_point.split(":")
-    if mod_name.endswith(".py"):
-        name = mod_name.removesuffix(".py").replace("/", ".")
-        spec = importlib.util.spec_from_file_location(name, mod_name)
-        mod = importlib.util.module_from_spec(spec)  # type: ignore
-        sys.modules["module.name"] = mod
-        spec.loader.exec_module(mod)  # type: ignore
-    else:
-        mod = importlib.import_module(mod_name)
-    return getattr(mod, attr_name)
-
-
-def _load_and_construct(obj):
-    if isinstance(obj, dict):
-        obj = {k: _load_and_construct(v) for k, v in obj.items()}
-
-        if "entry_point" in obj.keys():  # construct object
-            entry_point = obj["entry_point"]
-            args, kwargs = obj.get("args", ()), obj.get("kwargs", {})
-            obj = entry_point(*args, **kwargs)
-
-        return obj
-    elif isinstance(obj, list):
-        return list(map(_load_and_construct, obj))
-    elif isinstance(obj, str):
-        try:
-            return _load_attr(obj)
-        except ValueError:
-            return obj
-    else:
-        return obj
-
-
-def _make_env_spec(cfg: dict):
-    def _fn(w):
-        w["kwargs"] = _load_and_construct(w.pop("kwargs"))
-        return WrapperSpec(**w)
-
-    cfg["additional_wrappers"] = tuple(map(_fn, cfg["additional_wrappers"]))
-    return EnvSpec(**cfg)
-
-
-def get_now():
-    """Get current date/time in ISO format."""
-    str_ = datetime.now().isoformat(timespec="seconds")
-    if sys.platform.startswith("win32"):
-        str_ = str_.replace(":", "_")
-    return str_
 
 
 def _make_vec_env(

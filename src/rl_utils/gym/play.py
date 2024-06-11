@@ -1,4 +1,5 @@
 import argparse
+import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -7,7 +8,8 @@ import gymnasium as gym
 import imageio
 import numpy as np
 import pygame
-from gymnasium.envs.registration import EnvSpec
+
+from rl_utils.gym.utils import _make_env_spec
 
 # TODO: Return trajectories for imitation learning, etc.
 
@@ -35,7 +37,8 @@ def _display_arr(
 ):
     """Display rendered image.
 
-    Minor modification of `gymnasium.utils.play.display_arr`
+    Note:
+        Minor modification of `gymnasium.utils.play.display_arr`
 
     """
     arr = np.moveaxis(arr, 1, 0)
@@ -258,7 +261,8 @@ if __name__ == "__main__":
     # Load config
     if args.config is not None:
         with open(args.config) as f:
-            env_id = EnvSpec.from_json(f.read())
+            _cfg = json.loads(f.read())
+        env_id = _make_env_spec(_cfg)
 
     # CLI overrides
     if args.env is not None:
