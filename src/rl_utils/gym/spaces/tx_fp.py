@@ -11,11 +11,9 @@ from gymnasium import spaces
 
 from rl_utils.gym.spaces import utils as space_utils
 
-# TODO: deprecate recurse wrappers
-# TODO: stack tx
-# TODO: docs
-
+# TODO: deprecate recurse wrappers?
 # TODO: apply condition for `recursive_tx`!?
+# TODO: docs
 
 
 T_si = TypeVar("T_si")
@@ -23,6 +21,17 @@ T_so = TypeVar("T_so")
 T_tx_io = Callable[[T_si], tuple[T_so, Callable]]
 T_tx_i = T_tx_io[T_si, spaces.Space]
 T_tx = T_tx_i[spaces.Space]
+
+
+class ObservationWrapper(gym.ObservationWrapper):
+    # FIXME: move to separate module
+
+    def __init__(self, env: gym.Env, transform):
+        super().__init__(env)
+        self.observation_space, self._fn = transform(self.observation_space)
+
+    def observation(self, observation):
+        return self._fn(observation)
 
 
 #
@@ -234,56 +243,3 @@ def one_hot(
         return space, fn
 
     return tx
-
-
-#
-def one_hot_grid(  # noqa: C901
-    redundant: bool = False,
-) -> T_tx_io[spaces.MultiDiscrete, spaces.MultiBinary]:
-    def tx(space):
-        nvec = space.nvec
-        if nvec.ndim == 2:
-            nvec = nvec[..., np.newaxis]
-        elif not nvec.ndim == 3:
-            raise ValueError("Space must be 2- or 3-dimensional.")
-
-        n_e = []
-        for i in range(nvec.shape[-1]):  # assumes channel-last array
-            n_e.append(np.unique(nvec[..., i]).item())
-        n_enc = sum(n_e)
-        if not redundant:
-            n_enc -= len(n_e)
-        space = spaces.MultiBinary((*nvec.shape[:-1], n_enc))
-
-        def fn(x):
-            if x.ndim == 2:
-                x = x[..., np.newaxis]
-
-            def _encode(a, n_e):
-                arr = np.zeros((*a.shape, n_e), dtype=space.dtype)
-                idx = np.ix_(*map(np.arange, arr.shape[:-1])) + (a,)
-                arr[idx] = 1
-                start = int(not redundant)
-                return arr[..., start:]
-
-            slices = []
-            for i, n_e_i in enumerate(n_e):
-                s = _encode(x[..., i], n_e_i)
-                slices.append(s)
-            return np.concatenate(slices, axis=-1)
-
-        return space, fn
-
-    return tx
-
-
-#
-class ObservationWrapper(gym.ObservationWrapper):
-    # FIXME: move to separate module
-
-    def __init__(self, env: gym.Env, transform):
-        super().__init__(env)
-        self.observation_space, self._fn = transform(self.observation_space)
-
-    def observation(self, observation):
-        return self._fn(observation)
