@@ -147,7 +147,10 @@ def stack(spaces, axis=None):
 
 
 def concatenate(spaces, axis=None):
-    """Join a sequence of spaces along an existing axis."""
+    """Join a sequence of spaces along an existing axis.
+
+    'Upcasts' to superset space when required.
+    """
     if len(spaces) == 1:
         return spaces[0]
 

@@ -11,9 +11,8 @@ from gymnasium import spaces
 
 from rl_utils.gym.spaces import utils as space_utils
 
+# TODO: docs!!
 # TODO: deprecate recurse wrappers?
-# TODO: apply condition for `recursive_tx`!?
-# TODO: docs
 
 
 T_si = TypeVar("T_si")
@@ -114,6 +113,16 @@ def recursive_apply(transform) -> T_tx_i[spaces.Tuple | spaces.Dict]:
             return _apply(x, fns)
 
         return space, fn
+
+    return tx
+
+
+def conditional_apply(transform, fn):
+    def tx(space):
+        if fn(space):
+            return transform(space)
+        else:
+            return space, lambda x: x
 
     return tx
 
