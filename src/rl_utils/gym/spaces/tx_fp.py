@@ -167,6 +167,18 @@ def unnest() -> T_tx_io[spaces.Space, spaces.Tuple]:  # TODO
     return tx
 
 
+def reshape(shape: Sequence[int]) -> T_tx:
+    def tx(space):
+        space = space_utils.reshape(space, shape)
+
+        def fn(x):
+            return np.reshape(x, shape)
+
+        return space, fn
+
+    return tx
+
+
 def stack(
     axis: int | Sequence[int] | None,
 ) -> T_tx_io[spaces.Tuple | spaces.Dict, spaces.Tuple]:
@@ -248,6 +260,20 @@ def one_hot(
                     s = s[1:]
                 slices.append(s)
             return np.concatenate(slices)
+
+        return space, fn
+
+    return tx
+
+
+def normalize() -> T_tx_io[spaces.Box, spaces.Box]:
+    def tx(space):
+        low = np.unique(space.low).item()
+        high = np.unique(space.high).item()
+        space = spaces.Box(0, 1, space.shape)
+
+        def fn(x):
+            return (x - low) / (high - low)
 
         return space, fn
 

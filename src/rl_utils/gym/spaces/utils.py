@@ -31,7 +31,7 @@ def reshape(space, shape):
     """Reshape space."""
     if isinstance(space, Box):
         low, high = space.low.reshape(shape), space.high.reshape(shape)
-        return Box(low, high, dtype=float)
+        return Box(low, high, dtype=space.dtype)
     elif isinstance(space, MultiDiscrete):
         return MultiDiscrete(space.nvec.reshape(shape))
     elif isinstance(space, Discrete):
