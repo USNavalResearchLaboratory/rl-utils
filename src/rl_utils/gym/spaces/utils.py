@@ -173,12 +173,23 @@ def unnest(space):
             for s_i in space:
                 yield from unnest(s_i)
         elif isinstance(space, Dict):
-            for key in space:
-                yield from unnest(space[key])
+            for s in space.values():
+                yield from unnest(s)
         else:
             yield space
 
     return Tuple(_fn(space))
+
+
+def unnest_dict(space: Dict):
+    spaces = {}
+    for k, v in space.spaces.items():
+        if isinstance(v, Dict):
+            for vk, vv in unnest_dict(v).items():
+                spaces[f"{k}_{vk}"] = vv
+        else:
+            spaces[k] = v
+    return Dict(spaces)
 
 
 # Space classes

@@ -13,6 +13,7 @@ from rl_utils.gym.spaces import utils as space_utils
 
 # TODO: docs!!
 # TODO: deprecate recurse wrappers?
+# TODO: move array transforms to separate module?
 
 
 T_si = TypeVar("T_si")
@@ -145,22 +146,48 @@ def getitem(key: int | str) -> T_tx:
     return tx
 
 
-def unnest() -> T_tx_io[spaces.Space, spaces.Tuple]:  # TODO
+def unnest() -> T_tx_io[spaces.Space, spaces.Tuple]:
     def tx(space: spaces.Space):
         space = space_utils.unnest(space)
 
-        def fn(x):
-            def unnest(x):
-                if isinstance(x, tuple):
-                    for x_i in x:
-                        yield from unnest(x_i)
-                elif isinstance(x, dict):
-                    for x_i in x.values():
-                        yield from unnest(x_i)
-                else:
-                    yield x
+        # def fn(x):
+        #     def unnest(x):
+        #         if isinstance(x, tuple):
+        #             for x_i in x:
+        #                 yield from unnest(x_i)
+        #         elif isinstance(x, dict):
+        #             for x_i in x.values():
+        #                 yield from unnest(x_i)
+        #         else:
+        #             yield x
 
-            return tuple(unnest(x))
+        #     return tuple(unnest(x))
+        def fn(x):
+            if isinstance(x, tuple):
+                return sum(map(fn, x), start=())
+            elif isinstance(x, dict):
+                return sum(map(fn, x.values()), start=())
+            else:
+                return (x,)
+
+        return space, fn
+
+    return tx
+
+
+def unnest_dict() -> T_tx_io[spaces.Dict, spaces.Dict]:
+    def tx(space: spaces.Dict):
+        space = space_utils.unnest_dict(space)
+
+        def fn(x):
+            out = {}
+            for k, v in x.items():
+                if isinstance(v, dict):
+                    for vk, vv in fn(v).items():
+                        out[f"{k}_{vk}"] = vv
+                else:
+                    out[k] = v
+            return out
 
         return space, fn
 
