@@ -1,12 +1,18 @@
 """Additional `gymnasium` spaces and utilities."""
 
 from collections import OrderedDict
-from functools import wraps
+from functools import singledispatch, wraps
 
 import numpy as np
-from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
-
-# TODO: refactor transforms using `singledispatch`
+from gymnasium.spaces import (
+    Box,
+    Dict,
+    Discrete,
+    MultiBinary,
+    MultiDiscrete,
+    Space,
+    Tuple,
+)
 
 
 def recurse(fn):
@@ -27,99 +33,151 @@ def recurse(fn):
 
 
 # Transforms
-def reshape(space, shape):
+@singledispatch
+def reshape(space: Space, shape):
     """Reshape space."""
-    if isinstance(space, Box):
-        low, high = space.low.reshape(shape), space.high.reshape(shape)
-        return Box(low, high, dtype=space.dtype)
-    elif isinstance(space, MultiDiscrete):
-        return MultiDiscrete(space.nvec.reshape(shape))
-    elif isinstance(space, Discrete):
-        # if shape == ():
-        #     return space
-        return reshape(MultiDiscrete(space.n), shape)
-    elif isinstance(space, MultiBinary):
-        _tmp = np.empty(space.shape, space.dtype)
-        _tmp = _tmp.reshape(shape)  # raises exception if shapes not compatible
-        return MultiBinary(_tmp.shape)
-    else:
-        raise NotImplementedError
+    raise NotImplementedError
 
 
-def broadcast_to(space, shape):
+@reshape.register
+def _(space: Box, shape):
+    low, high = space.low.reshape(shape), space.high.reshape(shape)
+    return Box(low, high, dtype=space.dtype)  # type: ignore[arg-type]
+
+
+@reshape.register
+def _(space: MultiDiscrete, shape):
+    return MultiDiscrete(space.nvec.reshape(shape))
+
+
+@reshape.register
+def _(space: Discrete, shape):
+    return reshape(MultiDiscrete(np.array(space.n)), shape)
+
+
+@reshape.register
+def _(space: MultiBinary, shape):
+    _tmp = np.empty(space.shape, space.dtype)
+    _tmp = _tmp.reshape(shape)  # raises exception if shapes not compatible
+    return MultiBinary(_tmp.shape)
+
+
+@singledispatch
+def broadcast_to(space: Space, shape):
     """Broadcast space to new shape."""
-    if isinstance(space, Box):
-        low, high = (
-            np.broadcast_to(space.low, shape),
-            np.broadcast_to(space.high, shape),
-        )
-        return Box(low, high, dtype=space.dtype)
-    elif isinstance(space, MultiDiscrete):
-        return MultiDiscrete(np.broadcast_to(space.nvec, shape))
-    elif isinstance(space, Discrete):
-        # if shape == ():
-        #     return space
-        return broadcast_to(MultiDiscrete(space.n), shape)
-    elif isinstance(space, MultiBinary):
-        return MultiBinary(np.broadcast_shapes(space.shape, shape))
-    else:
-        raise NotImplementedError
+    raise NotImplementedError
 
 
-def broadcast_prepend(space, shape):
-    if isinstance(space, Box | MultiDiscrete | Discrete | MultiBinary):
-        return broadcast_to(space, shape + space.shape)
-    else:
-        raise NotImplementedError
+@broadcast_to.register
+def _(space: Box, shape):
+    low, high = (
+        np.broadcast_to(space.low, shape),
+        np.broadcast_to(space.high, shape),
+    )
+    return Box(low, high, dtype=space.dtype)  # type: ignore[arg-type]
 
 
-def tile(space, reps):
-    if isinstance(space, Box):
-        low, high = np.tile(space.low, reps), np.tile(space.high, reps)
-        return Box(low, high, dtype=float)
-    elif isinstance(space, MultiDiscrete):
-        return MultiDiscrete(np.tile(space.nvec, reps))
-    elif isinstance(space, Discrete):
-        return tile(MultiDiscrete(space.n), reps)
-    elif isinstance(space, MultiBinary):
-        _tmp = np.empty(space.shape, space.dtype)
-        _tmp = np.tile(_tmp, reps)
-        return MultiBinary(_tmp.shape)
-    else:
-        raise NotImplementedError
+@broadcast_to.register
+def _(space: MultiDiscrete, shape):
+    return MultiDiscrete(np.broadcast_to(space.nvec, shape))
 
 
-def moveaxis(space, source, destination):
-    if isinstance(space, Box):
-        return Box(
-            low=np.moveaxis(space.low, source, destination),
-            high=np.moveaxis(space.high, source, destination),
-            dtype=space.dtype,
-        )
-    elif isinstance(space, MultiDiscrete):
-        return MultiDiscrete(
-            nvec=np.moveaxis(space.nvec, source, destination), dtype=space.dtype
-        )
-    elif isinstance(space, MultiBinary):
-        n = np.moveaxis(np.ones(space.shape), source, destination).shape
-        # TODO: improve
-        return MultiBinary(n=n)
-    else:
-        raise NotImplementedError
+@broadcast_to.register
+def _(space: Discrete, shape):
+    # if shape == ():
+    #     return space
+    return broadcast_to(MultiDiscrete(np.array(space.n)), shape)
 
 
-def _get_space_lims(space):
+@broadcast_to.register
+def _(space: MultiBinary, shape):
+    return MultiBinary(np.broadcast_shapes(space.shape, shape))
+
+
+def broadcast_prepend(space: Box | MultiDiscrete | Discrete | MultiBinary, shape):
+    return broadcast_to(space, shape + space.shape)
+
+
+@singledispatch
+def tile(space: Space, reps):
+    raise NotImplementedError
+
+
+@tile.register
+def _(space: Box, reps):
+    low, high = np.tile(space.low, reps), np.tile(space.high, reps)
+    return Box(low, high, dtype=np.float32)
+
+
+@tile.register
+def _(space: MultiDiscrete, reps):
+    return MultiDiscrete(np.tile(space.nvec, reps))
+
+
+@tile.register
+def _(space: Discrete, reps):
+    return tile(MultiDiscrete(np.array(space.n)), reps)
+
+
+@tile.register
+def _(space: MultiBinary, reps):
+    _tmp = np.empty(space.shape, space.dtype)
+    _tmp = np.tile(_tmp, reps)
+    return MultiBinary(_tmp.shape)
+
+
+@singledispatch
+def moveaxis(space: Space, source, destination):
+    raise NotImplementedError
+
+
+@moveaxis.register
+def _(space: Box, source, destination):
+    return Box(
+        low=np.moveaxis(space.low, source, destination),
+        high=np.moveaxis(space.high, source, destination),
+        dtype=space.dtype,  # type: ignore[arg-type]
+    )
+
+
+@moveaxis.register
+def _(space: MultiDiscrete, source, destination):
+    return MultiDiscrete(
+        nvec=np.moveaxis(space.nvec, source, destination), dtype=space.dtype  # type: ignore[arg-type]
+    )
+
+
+@moveaxis.register
+def _(space: MultiBinary, source, destination):
+    n = np.moveaxis(np.ones(space.shape), source, destination).shape
+    # TODO: improve
+    return MultiBinary(n=n)
+
+
+@singledispatch
+def _get_space_lims(space: Space):
     """Get minimum and maximum values of a space."""
-    if isinstance(space, Box):
-        return np.stack((space.low, space.high))
-    elif isinstance(space, Discrete):
-        return np.array([0, space.n - 1])
-    elif isinstance(space, MultiDiscrete):
-        return np.stack((np.zeros(space.shape), space.nvec - 1))
-    elif isinstance(space, MultiBinary):
-        return np.stack((np.zeros(space.shape), np.ones(space.shape)))
-    else:
-        raise NotImplementedError
+    raise NotImplementedError
+
+
+@_get_space_lims.register
+def _(space: Box):
+    return np.stack((space.low, space.high))
+
+
+@_get_space_lims.register
+def _(space: Discrete):
+    return np.array([0, space.n - 1])
+
+
+@_get_space_lims.register
+def _(space: MultiDiscrete):
+    return np.stack((np.zeros(space.shape), space.nvec - 1))
+
+
+@_get_space_lims.register
+def _(space: MultiBinary):
+    return np.stack((np.zeros(space.shape), np.ones(space.shape)))
 
 
 def stack(spaces, axis=None):

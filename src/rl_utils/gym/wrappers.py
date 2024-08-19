@@ -5,6 +5,18 @@ import gymnasium as gym
 import numpy as np
 
 from rl_utils.gym.spaces import utils as space_utils
+from rl_utils.gym.spaces.tx import T_tx
+
+
+class TxObsWrapper(gym.ObservationWrapper):
+    """Apply a transform from `rl_utils.gym.spaces.tx`."""
+
+    def __init__(self, env: gym.Env, transform: T_tx):
+        super().__init__(env)
+        self.observation_space, self._fn = transform(self.observation_space)
+
+    def observation(self, observation):
+        return self._fn(observation)
 
 
 class ResetOptionsWrapper(gym.Wrapper):
