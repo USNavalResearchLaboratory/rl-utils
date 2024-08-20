@@ -36,6 +36,14 @@ python -m rl_utils.sb3.train --env-config=env_cfg.json --model-config=model_cfg.
 ```
 Note that the environment configuration conforms with Gymnasium [`EnvSpec`](https://gymnasium.farama.org/api/registry/#gymnasium.envs.registration.EnvSpec) and allows environment/wrapper entry points to be defined with strings of the form `"<module>:<attr>"`, enabling imports of user-defined objects. Similarly, SB3 model/training configuration allows the same string syntax to be used to specify custom algorithms, policies, extractors, callbacks, etc.
 
+
 ### Playing environments
 
-TODO
+To interactively play an environment, the functions `play` and `play_live` are provided in `rl_utils.gym.play`. Note that the environment render mode must be `"rgb_array"` and the action space must be `gym.spaces.Discrete`. Users can invoke the module from the command line with commands such as `python -m rl_utils.gym.play --env CartPole-v1 --keys a d`; the specified keys will correspond to the elements of the action space, in order. Default behavior uses `play`, which waits for user input for each action. The `--continuous` option uses `play_live`, which uses other optional arguments `--fps` and `--noop` to execute the environment in real time (as CartPole would, for example).
+
+
+### Space and observation transforms
+
+The subpackage `rl_utils.gym.spaces` aims to provide the user with a helpful suite of functions for the transformation of spaces and arrays. The `utils` submodule provides functions that operate on `gym.Space` and return a modified space. Many functions intend to mirror NumPy functions that operate on array instances of these spaces (e.g. reshape, stack, etc.)
+
+The `tx` submodule extends the utility of the commonly used `gym.ObservationWrapper`. Unfortunately, the functionality of `ObservationWrapper` cannot be naturally applied to subspaces of `Tuple`, `Dict`, etc. The provided functions in `tx` generate callable transforms that operate on spaces. These transforms return both a modified space (using `utils`) and a callable for transforming arrays from the original space to the new space. The provided class `rl_utils.gym.wrappers.TxObsWrapper` thinly wraps these transforms, overriding `observation_space` and modifying tensors in `ObservationWrapper.observation`.
